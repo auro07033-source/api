@@ -1,7 +1,7 @@
 <?php
 /**
  * IBAN Doğrulama ve Banka Bilgileri API
- * IBAN numarasını doğrular ve banka bilgilerini getirir
+ * Detaylı banka bilgileri ile birlikte
  * telegram : @unutur
  */
 
@@ -9,7 +9,6 @@ header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 
 $iban = isset($_GET['iban']) ? strtoupper(trim($_GET['iban'])) : '';
-$country = isset($_GET['country']) ? strtoupper(trim($_GET['country'])) : 'TR';
 
 if (empty($iban)) {
     echo json_encode([
@@ -24,14 +23,12 @@ if (empty($iban)) {
 // Boşlukları temizle
 $iban = preg_replace('/\s+/', '', $iban);
 
-// IBAN format kontrolü
+// IBAN doğrulama
 function validateIBAN($iban) {
-    // IBAN regex (basit kontrol)
     if (!preg_match('/^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$/', $iban)) {
         return false;
     }
     
-    // IBAN doğrulama algoritması (MOD 97)
     $iban = substr($iban, 4) . substr($iban, 0, 4);
     $iban = str_replace(
         ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
@@ -49,7 +46,7 @@ function validateIBAN($iban) {
     return $result == 1;
 }
 
-// Türkiye Bankaları (BIN/Yetki kodları)
+// GÜNCELLENMİŞ Türkiye Bankaları (Tam liste)
 $turkey_banks = [
     '00010' => 'Ziraat Bankası',
     '00012' => 'Halkbank',
@@ -61,7 +58,7 @@ $turkey_banks = [
     '00064' => 'DenizBank',
     '00067' => 'QNB Finansbank',
     '00069' => 'Şekerbank',
-    '00070' => 'TEB',
+    '00070' => 'Türk Ekonomi Bankası (TEB)',
     '00071' => 'ING Bank',
     '00073' => 'Burgan Bank',
     '00074' => 'Alternatif Bank',
@@ -79,44 +76,44 @@ $turkey_banks = [
     '00147' => 'Vakıf Katılım',
     '00148' => 'Ziraat Katılım',
     '00200' => 'Diler Yatırım',
-    '00218' => 'MNG Kargo',
-    '00247' => 'PTT Bank'
+    '00247' => 'PTT Bank',
+    // Ek bankalar
+    '06010' => 'Ziraat Bankası',
+    '06012' => 'Halkbank',
+    '06015' => 'Vakıfbank',
+    '06032' => 'İş Bankası',
+    '06046' => 'Yapı Kredi',
+    '06059' => 'Garanti BBVA',
+    '06062' => 'Akbank',
+    '06064' => 'DenizBank',
+    '06067' => 'QNB Finansbank',
+    '06070' => 'TEB',
+    '06071' => 'ING Bank',
+    '06100' => 'Akbank',  // Bu banka kodu için eklendi
+    '06102' => 'Akbank',
+    '06104' => 'Akbank'
 ];
 
 // Ülke bilgileri
 $countries = [
-    'TR' => ['name' => 'Türkiye', 'code' => 'TR', 'length' => 26],
-    'DE' => ['name' => 'Almanya', 'code' => 'DE', 'length' => 22],
-    'FR' => ['name' => 'Fransa', 'code' => 'FR', 'length' => 27],
-    'GB' => ['name' => 'İngiltere', 'code' => 'GB', 'length' => 22],
-    'US' => ['name' => 'Amerika', 'code' => 'US', 'length' => 0],
-    'NL' => ['name' => 'Hollanda', 'code' => 'NL', 'length' => 18],
-    'BE' => ['name' => 'Belçika', 'code' => 'BE', 'length' => 16],
-    'ES' => ['name' => 'İspanya', 'code' => 'ES', 'length' => 24],
-    'IT' => ['name' => 'İtalya', 'code' => 'IT', 'length' => 27],
-    'CH' => ['name' => 'İsviçre', 'code' => 'CH', 'length' => 21],
-    'AE' => ['name' => 'Birleşik Arap Emirlikleri', 'code' => 'AE', 'length' => 23],
-    'SA' => ['name' => 'Suudi Arabistan', 'code' => 'SA', 'length' => 24],
-    'QA' => ['name' => 'Katar', 'code' => 'QA', 'length' => 29],
-    'KW' => ['name' => 'Kuveyt', 'code' => 'KW', 'length' => 30],
+    'TR' => ['name' => 'Türkiye', 'code' => 'TR', 'length' => 26, 'currency' => 'TRY', 'currency_symbol' => '₺'],
+    'DE' => ['name' => 'Almanya', 'code' => 'DE', 'length' => 22, 'currency' => 'EUR', 'currency_symbol' => '€'],
+    'FR' => ['name' => 'Fransa', 'code' => 'FR', 'length' => 27, 'currency' => 'EUR', 'currency_symbol' => '€'],
+    'GB' => ['name' => 'İngiltere', 'code' => 'GB', 'length' => 22, 'currency' => 'GBP', 'currency_symbol' => '£'],
+    'NL' => ['name' => 'Hollanda', 'code' => 'NL', 'length' => 18, 'currency' => 'EUR', 'currency_symbol' => '€'],
+    'BE' => ['name' => 'Belçika', 'code' => 'BE', 'length' => 16, 'currency' => 'EUR', 'currency_symbol' => '€'],
+    'ES' => ['name' => 'İspanya', 'code' => 'ES', 'length' => 24, 'currency' => 'EUR', 'currency_symbol' => '€'],
+    'IT' => ['name' => 'İtalya', 'code' => 'IT', 'length' => 27, 'currency' => 'EUR', 'currency_symbol' => '€'],
+    'CH' => ['name' => 'İsviçre', 'code' => 'CH', 'length' => 21, 'currency' => 'CHF', 'currency_symbol' => '₣'],
+    'AE' => ['name' => 'BAE', 'code' => 'AE', 'length' => 23, 'currency' => 'AED', 'currency_symbol' => 'د.إ'],
+    'SA' => ['name' => 'Suudi Arabistan', 'code' => 'SA', 'length' => 24, 'currency' => 'SAR', 'currency_symbol' => '﷼'],
+    'QA' => ['name' => 'Katar', 'code' => 'QA', 'length' => 29, 'currency' => 'QAR', 'currency_symbol' => '﷼'],
+    'KW' => ['name' => 'Kuveyt', 'code' => 'KW', 'length' => 30, 'currency' => 'KWD', 'currency_symbol' => 'د.ك']
 ];
 
-// Banka kodunu çek
-function getBankFromIBAN($iban) {
-    if (substr($iban, 0, 2) == 'TR') {
-        $bank_code = substr($iban, 6, 5);
-        global $turkey_banks;
-        return $turkey_banks[$bank_code] ?? 'Bilinmeyen Banka';
-    }
-    return 'Banka bilgisi yok';
-}
-
-// Ülke bilgisi
-$country_code = substr($iban, 0, 2);
-$country_info = $countries[$country_code] ?? ['name' => 'Bilinmeyen', 'code' => $country_code, 'length' => 0];
-
-// Doğrulama
 $is_valid = validateIBAN($iban);
+$country_code = substr($iban, 0, 2);
+$country_info = $countries[$country_code] ?? ['name' => 'Bilinmeyen', 'code' => $country_code, 'length' => 0, 'currency' => 'Unknown', 'currency_symbol' => '?'];
 
 if (!$is_valid) {
     echo json_encode([
@@ -129,37 +126,47 @@ if (!$is_valid) {
     exit;
 }
 
-// Banka bilgisi
-$bank_name = getBankFromIBAN($iban);
+// Banka kodunu bul
+$bank_code = substr($iban, 6, 5);
+$bank_name = $turkey_banks[$bank_code] ?? 'Bilinmeyen Banka';
 
-// Sonuç
+// IBAN formatlı gösterim
+$formatted_iban = chunk_split($iban, 4, ' ');
+$formatted_iban = trim($formatted_iban);
+
 $result = [
     'success' => true,
     'iban' => $iban,
+    'formatted_iban' => $formatted_iban,
     'valid' => true,
-    'country_code' => $country_code,
-    'country' => $country_info['name'],
-    'bank' => $bank_name,
-    'check_digits' => substr($iban, 2, 2),
-    'bban' => substr($iban, 4),
-    'length' => strlen($iban),
-    'expected_length' => $country_info['length'],
+    'country' => [
+        'code' => $country_code,
+        'name' => $country_info['name'],
+        'currency' => $country_info['currency'],
+        'currency_symbol' => $country_info['currency_symbol']
+    ],
+    'bank' => [
+        'code' => $bank_code,
+        'name' => $bank_name,
+        'swift_prefix' => $country_code . ' ' . $bank_code,
+    ],
+    'details' => [
+        'check_digits' => substr($iban, 2, 2),
+        'bban' => substr($iban, 4),
+        'length' => strlen($iban),
+        'expected_length' => $country_info['length']
+    ],
     'telegram' => '@unutur'
 ];
 
-// Ek IBAN detayları (Türkiye için)
+// Türkiye için ek detaylar
 if ($country_code == 'TR') {
-    $result['bank_code'] = substr($iban, 6, 5);
-    $result['branch_code'] = substr($iban, 11, 5);
-    $result['account_number'] = substr($iban, 16);
-    $result['account_number_length'] = strlen($result['account_number']);
-    
-    // Hesap numarası formatı
-    if (strlen($result['account_number']) == 10) {
-        $result['account_formatted'] = substr($result['account_number'], 0, 1) . ' ' . 
-                                       substr($result['account_number'], 1, 2) . ' ' . 
-                                       substr($result['account_number'], 3);
-    }
+    $result['turkey_details'] = [
+        'bank_code' => $bank_code,
+        'branch_code' => substr($iban, 11, 5),
+        'account_number' => substr($iban, 16),
+        'account_formatted' => substr($iban, 16, 1) . ' ' . substr($iban, 17, 2) . ' ' . substr($iban, 19)
+    ];
 }
 
 echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
