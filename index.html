@@ -119,15 +119,18 @@
             display: flex;
             gap: 0.5rem;
             margin-bottom: 0.75rem;
+            flex-wrap: wrap;
         }
-        .input-group input {
+        .input-group input, .input-group textarea {
             flex: 1;
             padding: 0.5rem;
             border-radius: 0.5rem;
             border: 1px solid var(--border);
             background: var(--bg);
             color: var(--text);
+            font-family: monospace;
         }
+        .input-group textarea { min-width: 100%; font-size: 0.7rem; }
         .api-url {
             background: var(--bg);
             padding: 0.5rem 0.75rem;
@@ -143,7 +146,7 @@
             display: flex;
             gap: 0.5rem;
         }
-        .try-btn, .go-btn {
+        .try-btn, .go-btn, .upload-btn {
             border: none;
             color: white;
             padding: 0.5rem 1rem;
@@ -158,6 +161,8 @@
         .try-btn:hover { background: var(--primary-dark); }
         .go-btn { background: var(--success); }
         .go-btn:hover { background: #059669; }
+        .upload-btn { background: #8b5cf6; }
+        .upload-btn:hover { background: #7c3aed; }
         .result-area {
             margin-top: 1rem;
             background: var(--bg);
@@ -180,6 +185,7 @@
             color: var(--text-light);
             font-size: 0.85rem;
         }
+        .file-input { display: none; }
         @media (max-width: 640px) { body { padding: 1rem; } .grid { grid-template-columns: 1fr; } }
     </style>
 </head>
@@ -193,7 +199,7 @@
         <button class="theme-toggle" id="themeToggle">🌙 Gece</button>
     </div>
 
-    <!-- ÖZEL SORGULAMA API'LERİ -->
+    <!-- 🔍 ÖZEL SORGULAMA API'LERİ -->
     <div class="category">
         <div class="category-title">🔍 Özel Sorgulama API'leri</div>
         <div class="grid">
@@ -217,7 +223,7 @@
         </div>
     </div>
 
-    <!-- KART & KİMLİK API'LERİ -->
+    <!-- 💳 KART & KİMLİK API'LERİ -->
     <div class="category">
         <div class="category-title">💳 Kart & Kimlik API'leri</div>
         <div class="grid">
@@ -231,7 +237,7 @@
         </div>
     </div>
 
-    <!-- EĞLENCE & ARAÇ API'LERİ -->
+    <!-- 🌦️ EĞLENCE & ARAÇ API'LERİ -->
     <div class="category">
         <div class="category-title">🌦️ Eğlence & Araç API'leri</div>
         <div class="grid">
@@ -245,7 +251,7 @@
         </div>
     </div>
 
-    <!-- SOSYAL MEDYA & SMS API'LERİ -->
+    <!-- 📱 SOSYAL MEDYA & SMS API'LERİ -->
     <div class="category">
         <div class="category-title">📱 Sosyal Medya & SMS API'leri</div>
         <div class="grid">
@@ -261,7 +267,7 @@
         </div>
     </div>
 
-    <!-- PROXY & MAIL API'LERİ -->
+    <!-- 🔧 PROXY & MAIL API'LERİ -->
     <div class="category">
         <div class="category-title">🔧 Proxy & Mail API'leri</div>
         <div class="grid">
@@ -281,6 +287,71 @@
         </div>
     </div>
 
+    <!-- 🚀 YENİ EKLENEN 6 API (IP Logger, Marshal, Supercell, TinyURL, Telegram Spam, Telegram User) -->
+    <div class="category">
+        <div class="category-title">🚀 Yeni Eklenen API'ler</div>
+        <div class="grid">
+            <!-- IP Logger API -->
+            <div class="api-card">
+                <div class="api-header"><span class="api-name">🌐 IP Logger</span><span class="api-method">GET</span></div>
+                <div class="api-desc">Kısa URL oluşturup tıklayanların IP bilgilerini loglar.</div>
+                <div class="input-group"><input type="text" id="iploggerUrl" placeholder="Yönlendirilecek URL" value="https://t.me/lorex_tools"></div>
+                <div class="api-url" id="iploggerFullUrl">https://api-8ne7.onrender.com/iplogger.php?action=create&url=https://t.me/lorex_tools</div>
+                <div class="button-group"><button class="try-btn" onclick="testIpLogger()">🔍 Dene</button><button class="go-btn" onclick="goToUrl('iploggerFullUrl')">🌐 Git</button></div>
+                <div id="result-iplogger" class="result-area"></div>
+            </div>
+
+            <!-- Marshal Encode API -->
+            <div class="api-card">
+                <div class="api-header"><span class="api-name">🐍 Marshal Encode</span><span class="api-method">POST/GET</span></div>
+                <div class="api-desc">Python kodunu marshal ile encode eder.</div>
+                <div class="input-group"><textarea id="marshalCode" rows="2" placeholder="Python kodu...">print('Merhaba Dünya')</textarea></div>
+                <div class="api-url" id="marshalUrl">https://api-8ne7.onrender.com/marshal.php?action=encode&code=print('Merhaba Dünya')</div>
+                <div class="button-group"><button class="try-btn" onclick="testMarshalEncode()">🔐 Dene</button><button class="go-btn" onclick="goToUrl('marshalUrl')">🌐 Git</button></div>
+                <div id="result-marshal" class="result-area"></div>
+            </div>
+
+            <!-- Marshal Decode (Dosya Yükleme) -->
+            <div class="api-card">
+                <div class="api-header"><span class="api-name">🔓 Marshal Decode</span><span class="api-method">POST</span></div>
+                <div class="api-desc">Encoded _enc.py dosyasını çözer.</div>
+                <div class="input-group"><input type="file" id="marshalFile" accept=".py"></div>
+                <div class="button-group"><button class="upload-btn" onclick="testMarshalDecode()">📂 Yükle & Çöz</button></div>
+                <div id="result-marshal-decode" class="result-area"></div>
+            </div>
+
+            <!-- Supercell Checker -->
+            <div class="api-card">
+                <div class="api-header"><span class="api-name">⚡ Supercell</span><span class="api-method">GET</span></div>
+                <div class="api-desc">Microsoft hesabında Supercell oyunlarını kontrol eder.</div>
+                <div class="input-group"><input type="text" id="supercellEmail" placeholder="Email" value="ornek@outlook.com"><input type="password" id="supercellPass" placeholder="Şifre"></div>
+                <div class="api-url" id="supercellUrl">https://api-8ne7.onrender.com/supercell.php?email=ornek@outlook.com&password=</div>
+                <div class="button-group"><button class="try-btn" onclick="testSupercell()">⚡ Dene</button><button class="go-btn" onclick="goToUrl('supercellUrl')">🌐 Git</button></div>
+                <div id="result-supercell" class="result-area"></div>
+            </div>
+
+            <!-- TinyURL Kısaltma -->
+            <div class="api-card">
+                <div class="api-header"><span class="api-name">🔗 TinyURL</span><span class="api-method">GET</span></div>
+                <div class="api-desc">Uzun URL'leri kısaltır.</div>
+                <div class="input-group"><input type="text" id="tinyUrl" placeholder="Kısaltılacak URL" value="https://github.com"></div>
+                <div class="api-url" id="tinyFullUrl">https://api-8ne7.onrender.com/tiny.php?url=https://github.com</div>
+                <div class="button-group"><button class="try-btn" onclick="testTinyUrl()">🔗 Dene</button><button class="go-btn" onclick="goToUrl('tinyFullUrl')">🌐 Git</button></div>
+                <div id="result-tiny" class="result-area"></div>
+            </div>
+
+            <!-- Telegram User Info -->
+            <div class="api-card">
+                <div class="api-header"><span class="api-name">🤖 Telegram User</span><span class="api-method">GET</span></div>
+                <div class="api-desc">Telegram kullanıcı bilgilerini getirir.</div>
+                <div class="input-group"><input type="text" id="tgUser" placeholder="Kullanıcı adı" value="elonmusk"></div>
+                <div class="api-url" id="tgUserUrl">https://api-8ne7.onrender.com/telegram.php?username=elonmusk</div>
+                <div class="button-group"><button class="try-btn" onclick="testTelegramUser()">🤖 Dene</button><button class="go-btn" onclick="goToUrl('tgUserUrl')">🌐 Git</button></div>
+                <div id="result-tguser" class="result-area"></div>
+            </div>
+        </div>
+    </div>
+
     <div class="footer">
         <p>© 2026 Tüm hakları saklıdır</p>
     </div>
@@ -289,7 +360,6 @@
 <script>
     const BASE_URL = 'https://api-8ne7.onrender.com/';
 
-    // Tema fonksiyonları
     function setTheme(theme) {
         if (theme === 'dark') {
             document.body.classList.add('dark');
@@ -306,13 +376,11 @@
     setTheme(savedTheme === 'dark' ? 'dark' : 'light');
     document.getElementById('themeToggle').addEventListener('click', toggleTheme);
 
-    // Yeni sekmede URL açma
     function goToUrl(elementId) {
         const urlElement = document.getElementById(elementId);
         if (urlElement) window.open(urlElement.textContent, '_blank');
     }
 
-    // Genel API test fonksiyonu (JSON bekleyenler için)
     async function testApi(endpoint, resultId) {
         const fullUrl = BASE_URL + endpoint;
         const resultDiv = document.getElementById(resultId);
@@ -328,7 +396,7 @@
         }
     }
 
-    // Görsel dönen API'ler için (blood, notebook, vesika)
+    // Görsel dönen API'ler
     async function testBlood() {
         const text = document.getElementById('bloodText').value.trim();
         if (!text) { alert('Lütfen yazı girin!'); return; }
@@ -336,7 +404,7 @@
         document.getElementById('bloodUrl').textContent = url;
         const resultDiv = document.getElementById('result-blood');
         resultDiv.classList.add('active');
-        resultDiv.innerHTML = `<img src="${url}" style="max-width:100%; border-radius:8px;" alt="Blood Logo">`;
+        resultDiv.innerHTML = `<img src="${url}" style="max-width:100%; border-radius:8px;">`;
     }
     async function testNotebook() {
         const text = document.getElementById('notebookText').value.trim();
@@ -345,7 +413,7 @@
         document.getElementById('notebookUrl').textContent = url;
         const resultDiv = document.getElementById('result-notebook');
         resultDiv.classList.add('active');
-        resultDiv.innerHTML = `<img src="${url}" style="max-width:100%; border-radius:8px;" alt="Notebook">`;
+        resultDiv.innerHTML = `<img src="${url}" style="max-width:100%; border-radius:8px;">`;
     }
     async function testVesika() {
         const tc = document.getElementById('tcNumber').value.trim();
@@ -354,10 +422,10 @@
         document.getElementById('vesikaUrl').textContent = url;
         const resultDiv = document.getElementById('result-vesika');
         resultDiv.classList.add('active');
-        resultDiv.innerHTML = `<img src="${url}" style="max-width:100%; border-radius:8px;" alt="Vesika">`;
+        resultDiv.innerHTML = `<img src="${url}" style="max-width:100%; border-radius:8px;">`;
     }
 
-    // JSON dönen diğer tüm test fonksiyonları
+    // JSON dönen test fonksiyonları
     async function testInsta() {
         const username = document.getElementById('instaUsername').value.trim();
         if (!username) { alert('Lütfen kullanıcı adı girin!'); return; }
@@ -372,7 +440,7 @@
     async function testBin() {
         let bin = document.getElementById('binCode').value.trim();
         if (!bin) { alert('Lütfen 6 haneli BIN kodu girin!'); return; }
-        if (!/^\d{6}$/.test(bin)) { alert('BIN kodu 6 haneli olmalıdır!'); return; }
+        if (!/^\d{6}$/.test(bin)) { alert('BIN kodu 6 haneli olmalı!'); return; }
         const url = `${BASE_URL}bincheck.php?bin=${bin}`;
         document.getElementById('binUrl').textContent = url;
         const resultDiv = document.getElementById('result-bin');
@@ -405,7 +473,7 @@
     }
     async function testMedeni() {
         const phone = document.getElementById('phoneNumber').value.trim();
-        if (!phone) { alert('Lütfen telefon numarası girin!'); return; }
+        if (!phone) { alert('Lütfen telefon girin!'); return; }
         const url = `${BASE_URL}medenidurum.php?telefon=${encodeURIComponent(phone)}`;
         document.getElementById('medeniUrl').textContent = url;
         const resultDiv = document.getElementById('result-medeni');
@@ -427,7 +495,7 @@
     }
     async function testStripe() {
         const cc = document.getElementById('ccData').value.trim();
-        if (!cc) { alert('Lütfen kart bilgilerini girin! (numara|ay|yıl|cvv)'); return; }
+        if (!cc) { alert('Lütfen kart bilgilerini girin!'); return; }
         const url = `${BASE_URL}ccstripe.php?cc=${encodeURIComponent(cc)}`;
         document.getElementById('stripeUrl').textContent = url;
         const resultDiv = document.getElementById('result-stripe');
@@ -472,37 +540,37 @@
     async function testEmail() {
         const email = document.getElementById('emailTarget').value.trim();
         let count = document.getElementById('emailCount').value.trim();
-        if (!email) { alert('Lütfen email adresi girin!'); return; }
+        if (!email) { alert('Lütfen email girin!'); return; }
         if (!count || parseInt(count) < 1) count = '2';
         const url = `${BASE_URL}embomber.php?email=${encodeURIComponent(email)}&count=${count}`;
         document.getElementById('emailUrl').textContent = url;
         const resultDiv = document.getElementById('result-email');
         resultDiv.classList.add('active');
-        resultDiv.innerHTML = '⏳ Email gönderiliyor...';
+        resultDiv.innerHTML = '⏳ Yükleniyor...';
         try { const response = await fetch(url); const data = await response.json(); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
         catch (error) { resultDiv.innerHTML = `❌ Hata: ${error.message}`; }
     }
     async function testSms() {
         let phone = document.getElementById('smsPhone').value.trim();
         let count = parseInt(document.getElementById('smsCount').value, 10);
-        if (!phone) { alert('Lütfen telefon numarası girin!'); return; }
+        if (!phone) { alert('Lütfen telefon girin!'); return; }
         if (isNaN(count) || count < 1) count = 5;
         if (count > 100) count = 100;
         const url = `${BASE_URL}smsbomber.php?telefon=${encodeURIComponent(phone)}&adet=${count}`;
         document.getElementById('smsUrl').textContent = url;
         const resultDiv = document.getElementById('result-sms');
         resultDiv.classList.add('active');
-        resultDiv.innerHTML = '⏳ SMS gönderiliyor...';
+        resultDiv.innerHTML = '⏳ Yükleniyor...';
         try { const response = await fetch(url); const text = await response.text();
-            if (response.ok && !text.includes('Fatal error') && !text.includes('Division by zero')) {
+            if (response.ok && !text.includes('Fatal error')) {
                 try { const data = JSON.parse(text); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
-                catch { resultDiv.innerHTML = text || '✅ SMS gönderim işlemi tamamlandı!'; }
-            } else { resultDiv.innerHTML = `❌ SMS Bomber hatası:\n${text.substring(0, 500)}`; }
+                catch { resultDiv.innerHTML = text || '✅ SMS gönderildi!'; }
+            } else { resultDiv.innerHTML = `❌ Hata:\n${text.substring(0, 500)}`; }
         } catch (error) { resultDiv.innerHTML = `❌ Bağlantı hatası: ${error.message}`; }
     }
     async function testProxyCheck() {
         const proxy = document.getElementById('proxyTest').value.trim();
-        if (!proxy) { alert('Lütfen proxy adresi girin! (IP:Port)'); return; }
+        if (!proxy) { alert('Lütfen proxy girin!'); return; }
         const url = `${BASE_URL}proxychc.php?proxies=${encodeURIComponent(proxy)}`;
         document.getElementById('proxyTestUrl').textContent = url;
         const resultDiv = document.getElementById('result-proxycheck');
@@ -513,7 +581,7 @@
     }
     async function testTempInbox() {
         const email = document.getElementById('tempMail').value.trim();
-        if (!email) { alert('Lütfen email adresi girin!'); return; }
+        if (!email) { alert('Lütfen email girin!'); return; }
         const url = `${BASE_URL}tempmail.php?email=${encodeURIComponent(email)}`;
         document.getElementById('tempInboxUrl').textContent = url;
         const resultDiv = document.getElementById('result-temp-inbox');
@@ -524,7 +592,7 @@
     }
     async function testIp() {
         const ip = document.getElementById('ipAddress').value.trim();
-        if (!ip) { alert('Lütfen IP adresi girin!'); return; }
+        if (!ip) { alert('Lütfen IP girin!'); return; }
         const url = `${BASE_URL}ip.php?ip=${encodeURIComponent(ip)}`;
         document.getElementById('ipUrl').textContent = url;
         const resultDiv = document.getElementById('result-ip');
@@ -535,7 +603,7 @@
     }
     async function testTelegram() {
         const token = document.getElementById('botToken').value.trim();
-        if (!token) { alert('Lütfen bot token girin!'); return; }
+        if (!token) { alert('Lütfen token girin!'); return; }
         const url = `${BASE_URL}telegram.php?token=${encodeURIComponent(token)}`;
         document.getElementById('telegramUrl').textContent = url;
         const resultDiv = document.getElementById('result-telegram');
@@ -544,9 +612,80 @@
         try { const response = await fetch(url); const data = await response.json(); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
         catch (error) { resultDiv.innerHTML = `❌ Hata: ${error.message}`; }
     }
-
     function downloadProxies() {
         window.open('https://api-8ne7.onrender.com/proxy.php?format=text&limit=4000', '_blank');
+    }
+
+    // YENİ API'LER
+    async function testIpLogger() {
+        const urlParam = document.getElementById('iploggerUrl').value.trim();
+        if (!urlParam) { alert('Lütfen URL girin!'); return; }
+        const url = `${BASE_URL}iplogger.php?action=create&url=${encodeURIComponent(urlParam)}`;
+        document.getElementById('iploggerFullUrl').textContent = url;
+        const resultDiv = document.getElementById('result-iplogger');
+        resultDiv.classList.add('active');
+        resultDiv.innerHTML = '⏳ Yükleniyor...';
+        try { const response = await fetch(url); const data = await response.json(); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
+        catch (error) { resultDiv.innerHTML = `❌ Hata: ${error.message}`; }
+    }
+    async function testMarshalEncode() {
+        const code = document.getElementById('marshalCode').value.trim();
+        if (!code) { alert('Lütfen kod girin!'); return; }
+        const url = `${BASE_URL}marshal.php?action=encode&code=${encodeURIComponent(code)}`;
+        document.getElementById('marshalUrl').textContent = url;
+        const resultDiv = document.getElementById('result-marshal');
+        resultDiv.classList.add('active');
+        resultDiv.innerHTML = '⏳ Yükleniyor...';
+        try { const response = await fetch(url); const data = await response.json(); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
+        catch (error) { resultDiv.innerHTML = `❌ Hata: ${error.message}`; }
+    }
+    async function testMarshalDecode() {
+        const fileInput = document.getElementById('marshalFile');
+        if (!fileInput.files.length) { alert('Lütfen bir _enc.py dosyası seçin!'); return; }
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        const resultDiv = document.getElementById('result-marshal-decode');
+        resultDiv.classList.add('active');
+        resultDiv.innerHTML = '⏳ Dosya çözülüyor...';
+        try {
+            const response = await fetch(`${BASE_URL}marshal.php?action=upload_decode`, { method: 'POST', body: formData });
+            const data = await response.json();
+            resultDiv.innerHTML = JSON.stringify(data, null, 2);
+        } catch (error) { resultDiv.innerHTML = `❌ Hata: ${error.message}`; }
+    }
+    async function testSupercell() {
+        const email = document.getElementById('supercellEmail').value.trim();
+        const pass = document.getElementById('supercellPass').value.trim();
+        if (!email || !pass) { alert('Lütfen email ve şifre girin!'); return; }
+        const url = `${BASE_URL}supercell.php?email=${encodeURIComponent(email)}&password=${encodeURIComponent(pass)}`;
+        document.getElementById('supercellUrl').textContent = url;
+        const resultDiv = document.getElementById('result-supercell');
+        resultDiv.classList.add('active');
+        resultDiv.innerHTML = '⏳ Yükleniyor...';
+        try { const response = await fetch(url); const data = await response.json(); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
+        catch (error) { resultDiv.innerHTML = `❌ Hata: ${error.message}`; }
+    }
+    async function testTinyUrl() {
+        const longUrl = document.getElementById('tinyUrl').value.trim();
+        if (!longUrl) { alert('Lütfen URL girin!'); return; }
+        const url = `${BASE_URL}tiny.php?url=${encodeURIComponent(longUrl)}`;
+        document.getElementById('tinyFullUrl').textContent = url;
+        const resultDiv = document.getElementById('result-tiny');
+        resultDiv.classList.add('active');
+        resultDiv.innerHTML = '⏳ Yükleniyor...';
+        try { const response = await fetch(url); const data = await response.json(); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
+        catch (error) { resultDiv.innerHTML = `❌ Hata: ${error.message}`; }
+    }
+    async function testTelegramUser() {
+        const user = document.getElementById('tgUser').value.trim();
+        if (!user) { alert('Lütfen kullanıcı adı girin!'); return; }
+        const url = `${BASE_URL}telegram.php?username=${encodeURIComponent(user)}`;
+        document.getElementById('tgUserUrl').textContent = url;
+        const resultDiv = document.getElementById('result-tguser');
+        resultDiv.classList.add('active');
+        resultDiv.innerHTML = '⏳ Yükleniyor...';
+        try { const response = await fetch(url); const data = await response.json(); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
+        catch (error) { resultDiv.innerHTML = `❌ Hata: ${error.message}`; }
     }
 </script>
 </body>
