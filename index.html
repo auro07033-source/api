@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Lorex API Service</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            padding: 2rem 1rem;
+            min-height: 100vh;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        :root {
+            --bg: #f3f4f6;
+            --card-bg: #ffffff;
+            --text: #1f2937;
+            --text-light: #6b7280;
+            --border: #e5e7eb;
+            --primary: #3b82f6;
+            --primary-dark: #2563eb;
+            --success: #10b981;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
+        }
+
+        body.dark {
+            --bg: #0f172a;
+            --card-bg: #1e293b;
+            --text: #f1f5f9;
+            --text-light: #94a3b8;
+            --border: #334155;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+        }
+
+        .container { max-width: 1400px; margin: 0 auto; }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid var(--border);
+        }
+        .logo h1 {
+            font-size: 1.8rem;
+            background: linear-gradient(135deg, var(--primary), #8b5cf6);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .logo p { font-size: 0.85rem; color: var(--text-light); margin-top: 0.25rem; }
+        .theme-toggle {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 2rem;
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 500;
+            color: var(--text);
+        }
+        .category { margin-bottom: 2rem; }
+        .category-title {
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            border-left: 4px solid var(--primary);
+            padding-left: 0.75rem;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+            gap: 1.25rem;
+        }
+        .api-card {
+            background: var(--card-bg);
+            border-radius: 1rem;
+            border: 1px solid var(--border);
+            padding: 1.25rem;
+            box-shadow: var(--shadow);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .api-card:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
+        .api-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        .api-name { font-weight: 700; font-size: 1.1rem; color: var(--primary); }
+        .api-method {
+            font-size: 0.7rem;
+            font-weight: 600;
+            padding: 0.25rem 0.6rem;
+            border-radius: 1rem;
+            background: var(--primary);
+            color: white;
+        }
+        .api-desc { font-size: 0.85rem; color: var(--text-light); margin-bottom: 1rem; line-height: 1.4; }
+        .input-group {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+        }
+        .input-group input {
+            flex: 1;
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            color: var(--text);
+        }
+        .api-url {
+            background: var(--bg);
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.5rem;
+            font-family: monospace;
+            font-size: 0.7rem;
+            word-break: break-all;
+            margin-bottom: 0.75rem;
+            border: 1px solid var(--border);
+            color: var(--primary-dark);
+        }
+        .button-group {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .try-btn, .go-btn {
+            border: none;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            font-weight: 500;
+            cursor: pointer;
+            flex: 1;
+            text-align: center;
+            transition: background 0.2s;
+        }
+        .try-btn { background: var(--primary); }
+        .try-btn:hover { background: var(--primary-dark); }
+        .go-btn { background: var(--success); }
+        .go-btn:hover { background: #059669; }
+        .result-area {
+            margin-top: 1rem;
+            background: var(--bg);
+            border-radius: 0.5rem;
+            padding: 0.75rem;
+            font-size: 0.7rem;
+            font-family: monospace;
+            word-break: break-all;
+            display: none;
+            border: 1px solid var(--border);
+            max-height: 250px;
+            overflow: auto;
+        }
+        .result-area.active { display: block; }
+        .footer {
+            text-align: center;
+            margin-top: 3rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border);
+            color: var(--text-light);
+            font-size: 0.85rem;
+        }
+        @media (max-width: 640px) { body { padding: 1rem; } .grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <div class="logo">
+            <h1>𝗟𝗼𝗿𝗲𝘅 𝗔𝗽𝗶 𝗦𝗲𝗿𝘃𝗶𝗰𝗲</h1>
+        </div>
+        <button class="theme-toggle" id="themeToggle">🌙 Gece</button>
+    </div>
+
+    <!-- ÖZEL SORGULAMA API'LERİ -->
+    <div class="category">
+        <div class="category-title">🔍 Özel Sorgulama API'leri</div>
+        <div class="grid">
+            <!-- Instagram User Checker -->
+            <div class="api-card"><div class="api-header"><span class="api-name">📸 Instagram Kullanıcı Kontrol</span><span class="api-method">GET</span></div><div class="api-desc">Instagram kullanıcı adının geçerliliğini kontrol eder.</div><div class="input-group"><input type="text" id="instaUsername" placeholder="Kullanıcı adı" value="elonmusk"></div><div class="api-url" id="instaUrl">https://api-8ne7.onrender.com/instachc.php?user=elonmusk</div><div class="button-group"><button class="try-btn" onclick="testInsta()">🔍 Dene</button><button class="go-btn" onclick="goToUrl('instaUrl')">🌐 Git</button></div><div id="result-insta" class="result-area"></div></div>
+
+            <!-- BIN Checker -->
+            <div class="api-card"><div class="api-header"><span class="api-name">💳 BIN Sorgulama</span><span class="api-method">GET</span></div><div class="api-desc">6 haneli BIN koduna göre kart bilgileri.</div><div class="input-group"><input type="text" id="binCode" placeholder="6 haneli BIN" value="454671" maxlength="6"></div><div class="api-url" id="binUrl">https://api-8ne7.onrender.com/bincheck.php?bin=454671</div><div class="button-group"><button class="try-btn" onclick="testBin()">💳 Dene</button><button class="go-btn" onclick="goToUrl('binUrl')">🌐 Git</button></div><div id="result-bin" class="result-area"></div></div>
+
+            <!-- Plaka Sorgulama -->
+            <div class="api-card"><div class="api-header"><span class="api-name">🚗 Plaka Sorgulama</span><span class="api-method">GET</span></div><div class="api-desc">Plaka numarasına göre araç sahibi bilgisi.</div><div class="input-group"><input type="text" id="plateCode" placeholder="Plaka" value="34KG4978"></div><div class="api-url" id="plateUrl">https://api-8ne7.onrender.com/plakasorgu.php?plaka=34KG4978</div><div class="button-group"><button class="try-btn" onclick="testPlate()">🚗 Dene</button><button class="go-btn" onclick="goToUrl('plateUrl')">🌐 Git</button></div><div id="result-plate" class="result-area"></div></div>
+
+            <!-- Papara Sorgulama -->
+            <div class="api-card"><div class="api-header"><span class="api-name">💰 Papara Sorgulama</span><span class="api-method">GET</span></div><div class="api-desc">Papara numarası ile hesap sahibi bilgisi.</div><div class="input-group"><input type="text" id="paparaNo" placeholder="Papara No" value="1357003054"></div><div class="api-url" id="paparaUrl">https://api-8ne7.onrender.com/paparasorgu.php?paparano=1357003054</div><div class="button-group"><button class="try-btn" onclick="testPapara()">💰 Dene</button><button class="go-btn" onclick="goToUrl('paparaUrl')">🌐 Git</button></div><div id="result-papara" class="result-area"></div></div>
+
+            <!-- Medeni Durum -->
+            <div class="api-card"><div class="api-header"><span class="api-name">👤 Medeni Durum</span><span class="api-method">GET</span></div><div class="api-desc">Telefon numarasına göre kişisel bilgiler.</div><div class="input-group"><input type="text" id="phoneNumber" placeholder="Telefon" value="05300424545"></div><div class="api-url" id="medeniUrl">https://api-8ne7.onrender.com/medenidurum.php?telefon=05300424545</div><div class="button-group"><button class="try-btn" onclick="testMedeni()">👤 Dene</button><button class="go-btn" onclick="goToUrl('medeniUrl')">🌐 Git</button></div><div id="result-medeni" class="result-area"></div></div>
+
+            <!-- Adıyaman Vesika -->
+            <div class="api-card"><div class="api-header"><span class="api-name">🪪 Adıyaman Vesika</span><span class="api-method">GET</span></div><div class="api-desc">TC kimlik ile vesika fotoğrafı getirir (görsel).</div><div class="input-group"><input type="text" id="tcNumber" placeholder="TC No" value="17176267670"></div><div class="api-url" id="vesikaUrl">https://api-8ne7.onrender.com/adiyamanvsk.php?tc=17176267670</div><div class="button-group"><button class="try-btn" onclick="testVesika()">🪪 Dene</button><button class="go-btn" onclick="goToUrl('vesikaUrl')">🌐 Git</button></div><div id="result-vesika" class="result-area"></div></div>
+        </div>
+    </div>
+
+    <!-- KART & KİMLİK API'LERİ -->
+    <div class="category">
+        <div class="category-title">💳 Kart & Kimlik API'leri</div>
+        <div class="grid">
+            <div class="api-card"><div class="api-header"><span class="api-name">🎲 Rastgele Kart</span><span class="api-method">GET</span></div><div class="api-desc">Geçerli Luhn algoritmalı rastgele kart üretir.</div><div class="api-url" id="randomUrl">https://api-8ne7.onrender.com/cc_random.php</div><div class="button-group"><button class="try-btn" onclick="testApi('cc_random.php', 'result-random')">🎲 Dene</button><button class="go-btn" onclick="goToUrl('randomUrl')">🌐 Git</button></div><div id="result-random" class="result-area"></div></div>
+
+            <div class="api-card"><div class="api-header"><span class="api-name">🔍 Kart Sorgulama</span><span class="api-method">GET</span></div><div class="api-desc">Kart numarasına göre kart bilgileri.</div><div class="input-group"><input type="text" id="cardNo" placeholder="Kart No" value="4818081161475565"></div><div class="api-url" id="cardUrl">https://api-8ne7.onrender.com/cc_sorgu.php?kart_no=4818081161475565</div><div class="button-group"><button class="try-btn" onclick="testCard()">🔍 Dene</button><button class="go-btn" onclick="goToUrl('cardUrl')">🌐 Git</button></div><div id="result-card" class="result-area"></div></div>
+
+            <div class="api-card"><div class="api-header"><span class="api-name">⚡ CC Stripe Checker</span><span class="api-method">GET</span></div><div class="api-desc">Kartın aktif olup olmadığını test eder.</div><div class="input-group"><input type="text" id="ccData" placeholder="Kart|Ay|Yıl|CVV" value="4818081161475565|07|30|853"></div><div class="api-url" id="stripeUrl">https://api-8ne7.onrender.com/ccstripe.php?cc=4818081161475565|07|30|853</div><div class="button-group"><button class="try-btn" onclick="testStripe()">⚡ Dene</button><button class="go-btn" onclick="goToUrl('stripeUrl')">🌐 Git</button></div><div id="result-stripe" class="result-area"></div></div>
+
+            <div class="api-card"><div class="api-header"><span class="api-name">🆔 Fake Kimlik</span><span class="api-method">GET</span></div><div class="api-desc">Rastgele sahte kimlik ve kart bilgisi üretir.</div><div class="api-url" id="fakeUrl">https://api-8ne7.onrender.com/fakekimlik.php</div><div class="button-group"><button class="try-btn" onclick="testApi('fakekimlik.php', 'result-fake')">🆔 Dene</button><button class="go-btn" onclick="goToUrl('fakeUrl')">🌐 Git</button></div><div id="result-fake" class="result-area"></div></div>
+        </div>
+    </div>
+
+    <!-- EĞLENCE & ARAÇ API'LERİ -->
+    <div class="category">
+        <div class="category-title">🌦️ Eğlence & Araç API'leri</div>
+        <div class="grid">
+            <div class="api-card"><div class="api-header"><span class="api-name">☁️ Hava Durumu</span><span class="api-method">GET</span></div><div class="api-desc">Şehre göre anlık hava durumu.</div><div class="input-group"><input type="text" id="cityName" placeholder="Şehir" value="istanbul"></div><div class="api-url" id="weatherUrl">https://api-8ne7.onrender.com/hava.php?sehir=istanbul</div><div class="button-group"><button class="try-btn" onclick="testWeather()">☁️ Dene</button><button class="go-btn" onclick="goToUrl('weatherUrl')">🌐 Git</button></div><div id="result-weather" class="result-area"></div></div>
+
+            <div class="api-card"><div class="api-header"><span class="api-name">🩸 Kanlı Yazı Logo</span><span class="api-method">GET</span></div><div class="api-desc">Yazıyı kanlı horror film stiline dönüştürür (görsel).</div><div class="input-group"><input type="text" id="bloodText" placeholder="Yazı" value="Merhaba"></div><div class="api-url" id="bloodUrl">https://api-8ne7.onrender.com/blood.php?text=Merhaba</div><div class="button-group"><button class="try-btn" onclick="testBlood()">🩸 Dene</button><button class="go-btn" onclick="goToUrl('bloodUrl')">🌐 Git</button></div><div id="result-blood" class="result-area"></div></div>
+
+            <div class="api-card"><div class="api-header"><span class="api-name">📝 Deftere Yazı</span><span class="api-method">GET</span></div><div class="api-desc">Yazıyı defter sayfasında gösterir.</div><div class="input-group"><input type="text" id="notebookText" placeholder="Yazı" value="Lorex"></div><div class="api-url" id="notebookUrl">https://api-8ne7.onrender.com/defteryazi.php?metin=Lorex</div><div class="button-group"><button class="try-btn" onclick="testNotebook()">📝 Dene</button><button class="go-btn" onclick="goToUrl('notebookUrl')">🌐 Git</button></div><div id="result-notebook" class="result-area"></div></div>
+
+            <div class="api-card"><div class="api-header"><span class="api-name">🎮 Google Play Kodu</span><span class="api-method">GET</span></div><div class="api-desc">Rastgele Google Play hediye kodu üretir.</div><div class="api-url" id="playUrl">https://api-8ne7.onrender.com/playcode.php</div><div class="button-group"><button class="try-btn" onclick="testApi('playcode.php', 'result-play')">🎮 Dene</button><button class="go-btn" onclick="goToUrl('playUrl')">🌐 Git</button></div><div id="result-play" class="result-area"></div></div>
+        </div>
+    </div>
+
+    <!-- SOSYAL MEDYA & SMS API'LERİ -->
+    <div class="category">
+        <div class="category-title">📱 Sosyal Medya & SMS API'leri</div>
+        <div class="grid">
+            <div class="api-card"><div class="api-header"><span class="api-name">🎵 TikTok Kullanıcı</span><span class="api-method">GET</span></div><div class="api-desc">TikTok kullanıcı adı ile profil bilgileri.</div><div class="input-group"><input type="text" id="tiktokUser" placeholder="Kullanıcı" value="infazsiz6"></div><div class="api-url" id="tiktokUrl">https://api-8ne7.onrender.com/ttsrg.php?username=infazsiz6</div><div class="button-group"><button class="try-btn" onclick="testTiktok()">🎵 Dene</button><button class="go-btn" onclick="goToUrl('tiktokUrl')">🌐 Git</button></div><div id="result-tiktok" class="result-area"></div></div>
+
+            <div class="api-card"><div class="api-header"><span class="api-name">📸 Instagram Story</span><span class="api-method">GET</span></div><div class="api-desc">Instagram hikayesine görüntülenme gönderir.</div><div class="input-group"><input type="text" id="storyUser" placeholder="Kullanıcı" value="infazsiz6"></div><div class="api-url" id="storyUrl">https://api-8ne7.onrender.com/story.php?username=infazsiz6</div><div class="button-group"><button class="try-btn" onclick="testStory()">📸 Dene</button><button class="go-btn" onclick="goToUrl('storyUrl')">🌐 Git</button></div><div id="result-story" class="result-area"></div></div>
+
+            <div class="api-card"><div class="api-header"><span class="api-name">📧 Email Bomber</span><span class="api-method">GET</span></div><div class="api-desc">Hedef email adresine toplu email gönderir.</div><div class="input-group"><input type="text" id="emailTarget" placeholder="Email" value="ornek@gmail.com"><input type="number" id="emailCount" placeholder="Adet" value="2" min="1" max="50"></div><div class="api-url" id="emailUrl">https://api-8ne7.onrender.com/embomber.php?email=ornek@gmail.com&count=2</div><div class="button-group"><button class="try-btn" onclick="testEmail()">📧 Dene</button><button class="go-btn" onclick="goToUrl('emailUrl')">🌐 Git</button></div><div id="result-email" class="result-area"></div></div>
+
+            <div class="api-card"><div class="api-header"><span class="api-name">📱 SMS Bomber</span><span class="api-method">GET</span></div><div class="api-desc">Telefon numarasına toplu SMS gönderir (1-100).</div><div class="input-group"><input type="text" id="smsPhone" placeholder="Telefon" value="5551234567"><input type="number" id="smsCount" placeholder="Adet" value="5" min="1" max="100"></div><div class="api-url" id="smsUrl">https://api-8ne7.onrender.com/smsbomber.php?telefon=5551234567&adet=5</div><div class="button-group"><button class="try-btn" onclick="testSms()">📨 Dene</button><button class="go-btn" onclick="goToUrl('smsUrl')">🌐 Git</button></div><div id="result-sms" class="result-area"></div></div>
+
+            <div class="api-card"><div class="api-header"><span class="api-name">🔢 OTP SMS Toplama</span><span class="api-method">GET</span></div><div class="api-desc">Son OTP SMS mesajlarını gösterir.</div><div class="api-url" id="otpUrl">https://api-8ne7.onrender.com/otpapi.php</div><div class="button-group"><button class="try-btn" onclick="testApi('otpapi.php', 'result-otp')">🔢 Dene</button><button class="go-btn" onclick="goToUrl('otpUrl')">🌐 Git</button></div><div id="result-otp" class="result-area"></div></div>
+        </div>
+    </div>
+
+    <!-- PROXY & MAIL API'LERİ -->
+    <div class="category">
+        <div class="category-title">🔧 Proxy & Mail API'leri</div>
+        <div class="grid">
+            <div class="api-card"><div class="api-header"><span class="api-name">🔒 Proxy Listesi (JSON)</span><span class="api-method">GET</span></div><div class="api-desc">Çalışan proxy listesini JSON olarak getirir.</div><div class="api-url" id="proxyJsonUrl">https://api-8ne7.onrender.com/proxy.php</div><div class="button-group"><button class="try-btn" onclick="testApi('proxy.php', 'result-proxy-json')">🔒 Dene</button><button class="go-btn" onclick="goToUrl('proxyJsonUrl')">🌐 Git</button></div><div id="result-proxy-json" class="result-area"></div></div>
+
+            <div class="api-card"><div class="api-header"><span class="api-name">📥 Proxy İndir (TXT)</span><span class="api-method">GET</span></div><div class="api-desc">Proxy listesini text dosyası olarak indirir.</div><div class="api-url">https://api-8ne7.onrender.com/proxy.php?format=text&limit=4000</div><button class="try-btn" onclick="downloadProxies()">📥 İndir</button></div>
+
+            <div class="api-card"><div class="api-header"><span class="api-name">🔄 Proxy Test</span><span class="api-method">GET</span></div><div class="api-desc">Verilen proxy'nin çalışıp çalışmadığını test eder.</div><div class="input-group"><input type="text" id="proxyTest" placeholder="IP:Port" value="123.45.67.89:8080"></div><div class="api-url" id="proxyTestUrl">https://api-8ne7.onrender.com/proxychc.php?proxies=123.45.67.89:8080</div><div class="button-group"><button class="try-btn" onclick="testProxyCheck()">🔄 Dene</button><button class="go-btn" onclick="goToUrl('proxyTestUrl')">🌐 Git</button></div><div id="result-proxycheck" class="result-area"></div></div>
+
+            <div class="api-card"><div class="api-header"><span class="api-name">📧 Temp Mail Oluştur</span><span class="api-method">GET</span></div><div class="api-desc">Geçici email adresi oluşturur.</div><div class="api-url" id="tempCreateUrl">https://api-8ne7.onrender.com/tempmail.php</div><div class="button-group"><button class="try-btn" onclick="testApi('tempmail.php', 'result-temp-create')">📧 Dene</button><button class="go-btn" onclick="goToUrl('tempCreateUrl')">🌐 Git</button></div><div id="result-temp-create" class="result-area"></div></div>
+
+            <div class="api-card"><div class="api-header"><span class="api-name">📬 Temp Mail Kutusu</span><span class="api-method">GET</span></div><div class="api-desc">Geçici email adresinin gelen kutusunu kontrol eder.</div><div class="input-group"><input type="text" id="tempMail" placeholder="Email" value="b98c5de8cd@1secmail.com"></div><div class="api-url" id="tempInboxUrl">https://api-8ne7.onrender.com/tempmail.php?email=b98c5de8cd@1secmail.com</div><div class="button-group"><button class="try-btn" onclick="testTempInbox()">📬 Dene</button><button class="go-btn" onclick="goToUrl('tempInboxUrl')">🌐 Git</button></div><div id="result-temp-inbox" class="result-area"></div></div>
+
+            <div class="api-card"><div class="api-header"><span class="api-name">🌍 IP Sorgulama</span><span class="api-method">GET</span></div><div class="api-desc">IP adresine göre konum ve detaylı bilgi.</div><div class="input-group"><input type="text" id="ipAddress" placeholder="IP Adresi" value="8.8.8.8"></div><div class="api-url" id="ipUrl">https://api-8ne7.onrender.com/ip.php?ip=8.8.8.8</div><div class="button-group"><button class="try-btn" onclick="testIp()">🌍 Dene</button><button class="go-btn" onclick="goToUrl('ipUrl')">🌐 Git</button></div><div id="result-ip" class="result-area"></div></div>
+
+            <div class="api-card"><div class="api-header"><span class="api-name">🤖 Telegram Token</span><span class="api-method">GET</span></div><div class="api-desc">Telegram bot tokeninin geçerliliğini kontrol eder.</div><div class="input-group"><input type="text" id="botToken" placeholder="Token" value="7413992430:AAFYtOBkDhJqt6a-NB3Tzd3nqJOe5K223w0"></div><div class="api-url" id="telegramUrl">https://api-8ne7.onrender.com/telegram.php?token=7413992430:AAFYtOBkDhJqt6a-NB3Tzd3nqJOe5K223w0</div><div class="button-group"><button class="try-btn" onclick="testTelegram()">🤖 Dene</button><button class="go-btn" onclick="goToUrl('telegramUrl')">🌐 Git</button></div><div id="result-telegram" class="result-area"></div></div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>© 2026 Tüm hakları saklıdır</p>
+    </div>
+</div>
+
+<script>
+    const BASE_URL = 'https://api-8ne7.onrender.com/';
+
+    // Tema fonksiyonları
+    function setTheme(theme) {
+        if (theme === 'dark') {
+            document.body.classList.add('dark');
+            localStorage.setItem('theme', 'dark');
+            document.getElementById('themeToggle').innerHTML = '☀️ Gündüz';
+        } else {
+            document.body.classList.remove('dark');
+            localStorage.setItem('theme', 'light');
+            document.getElementById('themeToggle').innerHTML = '🌙 Gece';
+        }
+    }
+    function toggleTheme() { setTheme(document.body.classList.contains('dark') ? 'light' : 'dark'); }
+    const savedTheme = localStorage.getItem('theme');
+    setTheme(savedTheme === 'dark' ? 'dark' : 'light');
+    document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+
+    // Yeni sekmede URL açma
+    function goToUrl(elementId) {
+        const urlElement = document.getElementById(elementId);
+        if (urlElement) window.open(urlElement.textContent, '_blank');
+    }
+
+    // Genel API test fonksiyonu (JSON bekleyenler için)
+    async function testApi(endpoint, resultId) {
+        const fullUrl = BASE_URL + endpoint;
+        const resultDiv = document.getElementById(resultId);
+        if (!resultDiv) return;
+        resultDiv.classList.add('active');
+        resultDiv.innerHTML = '⏳ Yükleniyor...';
+        try {
+            const response = await fetch(fullUrl);
+            const data = await response.json();
+            resultDiv.innerHTML = JSON.stringify(data, null, 2);
+        } catch (error) {
+            resultDiv.innerHTML = `❌ Hata: ${error.message}`;
+        }
+    }
+
+    // Görsel dönen API'ler için (blood, notebook, vesika)
+    async function testBlood() {
+        const text = document.getElementById('bloodText').value.trim();
+        if (!text) { alert('Lütfen yazı girin!'); return; }
+        const url = `${BASE_URL}blood.php?text=${encodeURIComponent(text)}`;
+        document.getElementById('bloodUrl').textContent = url;
+        const resultDiv = document.getElementById('result-blood');
+        resultDiv.classList.add('active');
+        resultDiv.innerHTML = `<img src="${url}" style="max-width:100%; border-radius:8px;" alt="Blood Logo">`;
+    }
+    async function testNotebook() {
+        const text = document.getElementById('notebookText').value.trim();
+        if (!text) { alert('Lütfen yazı girin!'); return; }
+        const url = `${BASE_URL}defteryazi.php?metin=${encodeURIComponent(text)}`;
+        document.getElementById('notebookUrl').textContent = url;
+        const resultDiv = document.getElementById('result-notebook');
+        resultDiv.classList.add('active');
+        resultDiv.innerHTML = `<img src="${url}" style="max-width:100%; border-radius:8px;" alt="Notebook">`;
+    }
+    async function testVesika() {
+        const tc = document.getElementById('tcNumber').value.trim();
+        if (!tc) { alert('Lütfen TC kimlik no girin!'); return; }
+        const url = `${BASE_URL}adiyamanvsk.php?tc=${encodeURIComponent(tc)}`;
+        document.getElementById('vesikaUrl').textContent = url;
+        const resultDiv = document.getElementById('result-vesika');
+        resultDiv.classList.add('active');
+        resultDiv.innerHTML = `<img src="${url}" style="max-width:100%; border-radius:8px;" alt="Vesika">`;
+    }
+
+    // JSON dönen diğer tüm test fonksiyonları
+    async function testInsta() {
+        const username = document.getElementById('instaUsername').value.trim();
+        if (!username) { alert('Lütfen kullanıcı adı girin!'); return; }
+        const url = `${BASE_URL}instachc.php?user=${encodeURIComponent(username)}`;
+        document.getElementById('instaUrl').textContent = url;
+        const resultDiv = document.getElementById('result-insta');
+        resultDiv.classList.add('active');
+        resultDiv.innerHTML = '⏳ Yükleniyor...';
+        try { const response = await fetch(url); const data = await response.json(); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
+        catch (error) { resultDiv.innerHTML = `❌ Hata: ${error.message}`; }
+    }
+    async function testBin() {
+        let bin = document.getElementById('binCode').value.trim();
+        if (!bin) { alert('Lütfen 6 haneli BIN kodu girin!'); return; }
+        if (!/^\d{6}$/.test(bin)) { alert('BIN kodu 6 haneli olmalıdır!'); return; }
+        const url = `${BASE_URL}bincheck.php?bin=${bin}`;
+        document.getElementById('binUrl').textContent = url;
+        const resultDiv = document.getElementById('result-bin');
+        resultDiv.classList.add('active');
+        resultDiv.innerHTML = '⏳ Yükleniyor...';
+        try { const response = await fetch(url); const data = await response.json(); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
+        catch (error) { resultDiv.innerHTML = `❌ Hata: ${error.message}`; }
+    }
+    async function testPlate() {
+        const plate = document.getElementById('plateCode').value.trim();
+        if (!plate) { alert('Lütfen plaka girin!'); return; }
+        const url = `${BASE_URL}plakasorgu.php?plaka=${encodeURIComponent(plate)}`;
+        document.getElementById('plateUrl').textContent = url;
+        const resultDiv = document.getElementById('result-plate');
+        resultDiv.classList.add('active');
+        resultDiv.innerHTML = '⏳ Yükleniyor...';
+        try { const response = await fetch(url); const data = await response.json(); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
+        catch (error) { resultDiv.innerHTML = `❌ Hata: ${error.message}`; }
+    }
+    async function testPapara() {
+        const papara = document.getElementById('paparaNo').value.trim();
+        if (!papara) { alert('Lütfen Papara numarası girin!'); return; }
+        const url = `${BASE_URL}paparasorgu.php?paparano=${encodeURIComponent(papara)}`;
+        document.getElementById('paparaUrl').textContent = url;
+        const resultDiv = document.getElementById('result-papara');
+        resultDiv.classList.add('active');
+        resultDiv.innerHTML = '⏳ Yükleniyor...';
+        try { const response = await fetch(url); const data = await response.json(); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
+        catch (error) { resultDiv.innerHTML = `❌ Hata: ${error.message}`; }
+    }
+    async function testMedeni() {
+        const phone = document.getElementById('phoneNumber').value.trim();
+        if (!phone) { alert('Lütfen telefon numarası girin!'); return; }
+        const url = `${BASE_URL}medenidurum.php?telefon=${encodeURIComponent(phone)}`;
+        document.getElementById('medeniUrl').textContent = url;
+        const resultDiv = document.getElementById('result-medeni');
+        resultDiv.classList.add('active');
+        resultDiv.innerHTML = '⏳ Yükleniyor...';
+        try { const response = await fetch(url); const data = await response.json(); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
+        catch (error) { resultDiv.innerHTML = `❌ Hata: ${error.message}`; }
+    }
+    async function testCard() {
+        const card = document.getElementById('cardNo').value.trim();
+        if (!card) { alert('Lütfen kart numarası girin!'); return; }
+        const url = `${BASE_URL}cc_sorgu.php?kart_no=${encodeURIComponent(card)}`;
+        document.getElementById('cardUrl').textContent = url;
+        const resultDiv = document.getElementById('result-card');
+        resultDiv.classList.add('active');
+        resultDiv.innerHTML = '⏳ Yükleniyor...';
+        try { const response = await fetch(url); const data = await response.json(); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
+        catch (error) { resultDiv.innerHTML = `❌ Hata: ${error.message}`; }
+    }
+    async function testStripe() {
+        const cc = document.getElementById('ccData').value.trim();
+        if (!cc) { alert('Lütfen kart bilgilerini girin! (numara|ay|yıl|cvv)'); return; }
+        const url = `${BASE_URL}ccstripe.php?cc=${encodeURIComponent(cc)}`;
+        document.getElementById('stripeUrl').textContent = url;
+        const resultDiv = document.getElementById('result-stripe');
+        resultDiv.classList.add('active');
+        resultDiv.innerHTML = '⏳ Yükleniyor...';
+        try { const response = await fetch(url); const data = await response.json(); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
+        catch (error) { resultDiv.innerHTML = `❌ Hata: ${error.message}`; }
+    }
+    async function testWeather() {
+        const city = document.getElementById('cityName').value.trim();
+        if (!city) { alert('Lütfen şehir girin!'); return; }
+        const url = `${BASE_URL}hava.php?sehir=${encodeURIComponent(city)}`;
+        document.getElementById('weatherUrl').textContent = url;
+        const resultDiv = document.getElementById('result-weather');
+        resultDiv.classList.add('active');
+        resultDiv.innerHTML = '⏳ Yükleniyor...';
+        try { const response = await fetch(url); const data = await response.json(); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
+        catch (error) { resultDiv.innerHTML = `❌ Hata: ${error.message}`; }
+    }
+    async function testTiktok() {
+        const user = document.getElementById('tiktokUser').value.trim();
+        if (!user) { alert('Lütfen kullanıcı adı girin!'); return; }
+        const url = `${BASE_URL}ttsrg.php?username=${encodeURIComponent(user)}`;
+        document.getElementById('tiktokUrl').textContent = url;
+        const resultDiv = document.getElementById('result-tiktok');
+        resultDiv.classList.add('active');
+        resultDiv.innerHTML = '⏳ Yükleniyor...';
+        try { const response = await fetch(url); const data = await response.json(); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
+        catch (error) { resultDiv.innerHTML = `❌ Hata: ${error.message}`; }
+    }
+    async function testStory() {
+        const user = document.getElementById('storyUser').value.trim();
+        if (!user) { alert('Lütfen kullanıcı adı girin!'); return; }
+        const url = `${BASE_URL}story.php?username=${encodeURIComponent(user)}`;
+        document.getElementById('storyUrl').textContent = url;
+        const resultDiv = document.getElementById('result-story');
+        resultDiv.classList.add('active');
+        resultDiv.innerHTML = '⏳ Yükleniyor...';
+        try { const response = await fetch(url); const data = await response.json(); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
+        catch (error) { resultDiv.innerHTML = `❌ Hata: ${error.message}`; }
+    }
+    async function testEmail() {
+        const email = document.getElementById('emailTarget').value.trim();
+        let count = document.getElementById('emailCount').value.trim();
+        if (!email) { alert('Lütfen email adresi girin!'); return; }
+        if (!count || parseInt(count) < 1) count = '2';
+        const url = `${BASE_URL}embomber.php?email=${encodeURIComponent(email)}&count=${count}`;
+        document.getElementById('emailUrl').textContent = url;
+        const resultDiv = document.getElementById('result-email');
+        resultDiv.classList.add('active');
+        resultDiv.innerHTML = '⏳ Email gönderiliyor...';
+        try { const response = await fetch(url); const data = await response.json(); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
+        catch (error) { resultDiv.innerHTML = `❌ Hata: ${error.message}`; }
+    }
+    async function testSms() {
+        let phone = document.getElementById('smsPhone').value.trim();
+        let count = parseInt(document.getElementById('smsCount').value, 10);
+        if (!phone) { alert('Lütfen telefon numarası girin!'); return; }
+        if (isNaN(count) || count < 1) count = 5;
+        if (count > 100) count = 100;
+        const url = `${BASE_URL}smsbomber.php?telefon=${encodeURIComponent(phone)}&adet=${count}`;
+        document.getElementById('smsUrl').textContent = url;
+        const resultDiv = document.getElementById('result-sms');
+        resultDiv.classList.add('active');
+        resultDiv.innerHTML = '⏳ SMS gönderiliyor...';
+        try { const response = await fetch(url); const text = await response.text();
+            if (response.ok && !text.includes('Fatal error') && !text.includes('Division by zero')) {
+                try { const data = JSON.parse(text); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
+                catch { resultDiv.innerHTML = text || '✅ SMS gönderim işlemi tamamlandı!'; }
+            } else { resultDiv.innerHTML = `❌ SMS Bomber hatası:\n${text.substring(0, 500)}`; }
+        } catch (error) { resultDiv.innerHTML = `❌ Bağlantı hatası: ${error.message}`; }
+    }
+    async function testProxyCheck() {
+        const proxy = document.getElementById('proxyTest').value.trim();
+        if (!proxy) { alert('Lütfen proxy adresi girin! (IP:Port)'); return; }
+        const url = `${BASE_URL}proxychc.php?proxies=${encodeURIComponent(proxy)}`;
+        document.getElementById('proxyTestUrl').textContent = url;
+        const resultDiv = document.getElementById('result-proxycheck');
+        resultDiv.classList.add('active');
+        resultDiv.innerHTML = '⏳ Yükleniyor...';
+        try { const response = await fetch(url); const data = await response.json(); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
+        catch (error) { resultDiv.innerHTML = `❌ Hata: ${error.message}`; }
+    }
+    async function testTempInbox() {
+        const email = document.getElementById('tempMail').value.trim();
+        if (!email) { alert('Lütfen email adresi girin!'); return; }
+        const url = `${BASE_URL}tempmail.php?email=${encodeURIComponent(email)}`;
+        document.getElementById('tempInboxUrl').textContent = url;
+        const resultDiv = document.getElementById('result-temp-inbox');
+        resultDiv.classList.add('active');
+        resultDiv.innerHTML = '⏳ Yükleniyor...';
+        try { const response = await fetch(url); const data = await response.json(); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
+        catch (error) { resultDiv.innerHTML = `❌ Hata: ${error.message}`; }
+    }
+    async function testIp() {
+        const ip = document.getElementById('ipAddress').value.trim();
+        if (!ip) { alert('Lütfen IP adresi girin!'); return; }
+        const url = `${BASE_URL}ip.php?ip=${encodeURIComponent(ip)}`;
+        document.getElementById('ipUrl').textContent = url;
+        const resultDiv = document.getElementById('result-ip');
+        resultDiv.classList.add('active');
+        resultDiv.innerHTML = '⏳ Yükleniyor...';
+        try { const response = await fetch(url); const data = await response.json(); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
+        catch (error) { resultDiv.innerHTML = `❌ Hata: ${error.message}`; }
+    }
+    async function testTelegram() {
+        const token = document.getElementById('botToken').value.trim();
+        if (!token) { alert('Lütfen bot token girin!'); return; }
+        const url = `${BASE_URL}telegram.php?token=${encodeURIComponent(token)}`;
+        document.getElementById('telegramUrl').textContent = url;
+        const resultDiv = document.getElementById('result-telegram');
+        resultDiv.classList.add('active');
+        resultDiv.innerHTML = '⏳ Yükleniyor...';
+        try { const response = await fetch(url); const data = await response.json(); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
+        catch (error) { resultDiv.innerHTML = `❌ Hata: ${error.message}`; }
+    }
+
+    function downloadProxies() {
+        window.open('https://api-8ne7.onrender.com/proxy.php?format=text&limit=4000', '_blank');
+    }
+</script>
+</body>
+</html>
