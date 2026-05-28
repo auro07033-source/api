@@ -349,7 +349,83 @@
                 <div class="button-group"><button class="try-btn" onclick="testWeather()">🌤️ Dene</button><button class="go-btn" onclick="goToUrl('weatherUrl')">🌐 Git</button></div>
                 <div id="result-weather" class="result-area"></div>
             </div>
+<!-- VIRUSTOTAL URL CHECKER BÖLÜMÜ -->
+<div class="category">
+    <div class="category-title">🛡️ VirusTotal URL Checker</div>
+    <div class="grid">
+        <div class="api-card">
+            <div class="api-header">
+                <span class="api-name">🔍 URL Güvenlik Kontrolü</span>
+                <span class="api-method">GET</span>
+            </div>
+            <div class="api-desc">VirusTotal API ile URL güvenlik kontrolü (90+ antivirüs motoru)</div>
+            <div class="input-group">
+                <input type="text" id="vtUrl" placeholder="https://github.com" value="https://github.com">
+            </div>
+            <div class="api-url" id="vtApiUrl">https://api-8ne7.onrender.com/vt.php?url=https://github.com</div>
+            <div class="button-group">
+                <button class="try-btn" onclick="testVirusTotal()">🔍 KONTROL ET</button>
+                <button class="go-btn" onclick="goToUrl('vtApiUrl')">🌐 Git</button>
+            </div>
+            <div id="result-vt" class="result-area"></div>
+        </div>
+    </div>
+</div>
 
+<script>
+// VirusTotal Checker Fonksiyonu
+async function testVirusTotal() {
+    const url = document.getElementById('vtUrl').value.trim();
+    if (!url) {
+        alert('Lütfen bir URL girin!');
+        return;
+    }
+    
+    const apiUrl = `https://api-8ne7.onrender.com/vt.php?url=${encodeURIComponent(url)}`;
+    document.getElementById('vtApiUrl').textContent = apiUrl;
+    
+    const resultDiv = document.getElementById('result-vt');
+    resultDiv.classList.add('active');
+    resultDiv.innerHTML = '⏳ VirusTotal tarıyor... (15-20 saniye)';
+    
+    try {
+        const response = await fetch(apiUrl);
+        const data = await response.json();
+        
+        if (data.success) {
+            const status = data.safe ? '✅ GÜVENLİ' : '⚠️ TEHLİKELİ';
+            const statusColor = data.safe ? '#10b981' : '#ef4444';
+            
+            resultDiv.innerHTML = `
+                <div style="border-bottom:1px solid var(--border); padding-bottom:8px; margin-bottom:8px;">
+                    <strong>🔗 URL:</strong> ${data.url}<br>
+                    <strong>📊 Durum:</strong> <span style="color:${statusColor}">${status}</span><br>
+                    <strong>🦠 Tespit:</strong> ${data.positives}/${data.total_scanners}<br>
+                    <strong>📅 Tarih:</strong> ${data.scan_date}
+                </div>
+                ${data.detected_by && data.detected_by.length > 0 ? `
+                <div>
+                    <strong>⚠️ Tespit Edenler:</strong><br>
+                    ${data.detected_by.map(e => `<span style="display:inline-block; background:#ef444420; padding:2px 6px; border-radius:12px; font-size:11px; margin:2px">${e}</span>`).join('')}
+                </div>
+                ` : ''}
+                <div style="margin-top:8px;">
+                    🔗 <a href="${data.permalink}" target="_blank">VirusTotal Raporu</a>
+                </div>
+            `;
+        } else {
+            resultDiv.innerHTML = `❌ Hata: ${data.error || 'Bilinmeyen hata'}`;
+        }
+    } catch (error) {
+        resultDiv.innerHTML = `❌ Bağlantı hatası: ${error.message}`;
+    }
+}
+
+function goToUrl(elementId) {
+    const urlElement = document.getElementById(elementId);
+    if (urlElement) window.open(urlElement.textContent, '_blank');
+}
+</script>
             <!-- IP Analiz (Secure) -->
             <div class="api-card">
                 <div class="api-header"><span class="api-name">🛡️ IP Analiz</span><span class="api-method">GET</span></div>
