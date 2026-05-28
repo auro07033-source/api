@@ -203,22 +203,16 @@
     <div class="category">
         <div class="category-title">🔍 Özel Sorgulama API'leri</div>
         <div class="grid">
-            <!-- Instagram User Checker -->
             <div class="api-card"><div class="api-header"><span class="api-name">📸 Instagram Kullanıcı Kontrol</span><span class="api-method">GET</span></div><div class="api-desc">Instagram kullanıcı adının geçerliliğini kontrol eder.</div><div class="input-group"><input type="text" id="instaUsername" placeholder="Kullanıcı adı" value="elonmusk"></div><div class="api-url" id="instaUrl">https://api-8ne7.onrender.com/instachc.php?user=elonmusk</div><div class="button-group"><button class="try-btn" onclick="testInsta()">🔍 Dene</button><button class="go-btn" onclick="goToUrl('instaUrl')">🌐 Git</button></div><div id="result-insta" class="result-area"></div></div>
 
-            <!-- BIN Checker -->
             <div class="api-card"><div class="api-header"><span class="api-name">💳 BIN Sorgulama</span><span class="api-method">GET</span></div><div class="api-desc">6 haneli BIN koduna göre kart bilgileri.</div><div class="input-group"><input type="text" id="binCode" placeholder="6 haneli BIN" value="454671" maxlength="6"></div><div class="api-url" id="binUrl">https://api-8ne7.onrender.com/bincheck.php?bin=454671</div><div class="button-group"><button class="try-btn" onclick="testBin()">💳 Dene</button><button class="go-btn" onclick="goToUrl('binUrl')">🌐 Git</button></div><div id="result-bin" class="result-area"></div></div>
 
-            <!-- Plaka Sorgulama -->
             <div class="api-card"><div class="api-header"><span class="api-name">🚗 Plaka Sorgulama</span><span class="api-method">GET</span></div><div class="api-desc">Plaka numarasına göre araç sahibi bilgisi.</div><div class="input-group"><input type="text" id="plateCode" placeholder="Plaka" value="34KG4978"></div><div class="api-url" id="plateUrl">https://api-8ne7.onrender.com/plakasorgu.php?plaka=34KG4978</div><div class="button-group"><button class="try-btn" onclick="testPlate()">🚗 Dene</button><button class="go-btn" onclick="goToUrl('plateUrl')">🌐 Git</button></div><div id="result-plate" class="result-area"></div></div>
 
-            <!-- Papara Sorgulama -->
             <div class="api-card"><div class="api-header"><span class="api-name">💰 Papara Sorgulama</span><span class="api-method">GET</span></div><div class="api-desc">Papara numarası ile hesap sahibi bilgisi.</div><div class="input-group"><input type="text" id="paparaNo" placeholder="Papara No" value="1357003054"></div><div class="api-url" id="paparaUrl">https://api-8ne7.onrender.com/paparasorgu.php?paparano=1357003054</div><div class="button-group"><button class="try-btn" onclick="testPapara()">💰 Dene</button><button class="go-btn" onclick="goToUrl('paparaUrl')">🌐 Git</button></div><div id="result-papara" class="result-area"></div></div>
 
-            <!-- Medeni Durum -->
             <div class="api-card"><div class="api-header"><span class="api-name">👤 Medeni Durum</span><span class="api-method">GET</span></div><div class="api-desc">Telefon numarasına göre kişisel bilgiler.</div><div class="input-group"><input type="text" id="phoneNumber" placeholder="Telefon" value="05300424545"></div><div class="api-url" id="medeniUrl">https://api-8ne7.onrender.com/medenidurum.php?telefon=05300424545</div><div class="button-group"><button class="try-btn" onclick="testMedeni()">👤 Dene</button><button class="go-btn" onclick="goToUrl('medeniUrl')">🌐 Git</button></div><div id="result-medeni" class="result-area"></div></div>
 
-            <!-- Adıyaman Vesika -->
             <div class="api-card"><div class="api-header"><span class="api-name">🪪 Adıyaman Vesika</span><span class="api-method">GET</span></div><div class="api-desc">TC kimlik ile vesika fotoğrafı getirir (görsel).</div><div class="input-group"><input type="text" id="tcNumber" placeholder="TC No" value="17176267670"></div><div class="api-url" id="vesikaUrl">https://api-8ne7.onrender.com/adiyamanvsk.php?tc=17176267670</div><div class="button-group"><button class="try-btn" onclick="testVesika()">🪪 Dene</button><button class="go-btn" onclick="goToUrl('vesikaUrl')">🌐 Git</button></div><div id="result-vesika" class="result-area"></div></div>
         </div>
     </div>
@@ -287,7 +281,7 @@
         </div>
     </div>
 
-    <!-- 🚀 YENİ EKLENEN 6 API (IP Logger, Marshal, Supercell, TinyURL, Telegram Spam, Telegram User) -->
+    <!-- 🚀 YENİ EKLENEN API'LER -->
     <div class="category">
         <div class="category-title">🚀 Yeni Eklenen API'ler</div>
         <div class="grid">
@@ -301,17 +295,7 @@
                 <div id="result-iplogger" class="result-area"></div>
             </div>
 
-            <!-- Marshal Encode API -->
-            <div class="api-card">
-                <div class="api-header"><span class="api-name">🐍 Marshal Encode</span><span class="api-method">POST/GET</span></div>
-                <div class="api-desc">Python kodunu marshal ile encode eder.</div>
-                <div class="input-group"><textarea id="marshalCode" rows="2" placeholder="Python kodu...">print('Merhaba Dünya')</textarea></div>
-                <div class="api-url" id="marshalUrl">https://api-8ne7.onrender.com/marshal.php?action=encode&code=print('Merhaba Dünya')</div>
-                <div class="button-group"><button class="try-btn" onclick="testMarshalEncode()">🔐 Dene</button><button class="go-btn" onclick="goToUrl('marshalUrl')">🌐 Git</button></div>
-                <div id="result-marshal" class="result-area"></div>
-            </div>
-
-            <!-- Marshal Decode (Dosya Yükleme) -->
+            <!-- Marshal Decode (Sadece Decode - Dosya Yükleme) -->
             <div class="api-card">
                 <div class="api-header"><span class="api-name">🔓 Marshal Decode</span><span class="api-method">POST</span></div>
                 <div class="api-desc">Encoded _enc.py dosyasını çözer.</div>
@@ -348,6 +332,16 @@
                 <div class="api-url" id="tgUserUrl">https://api-8ne7.onrender.com/telegram.php?username=elonmusk</div>
                 <div class="button-group"><button class="try-btn" onclick="testTelegramUser()">🤖 Dene</button><button class="go-btn" onclick="goToUrl('tgUserUrl')">🌐 Git</button></div>
                 <div id="result-tguser" class="result-area"></div>
+            </div>
+
+            <!-- Telegram SMS Spam -->
+            <div class="api-card">
+                <div class="api-header"><span class="api-name">📱 Telegram Spam</span><span class="api-method">GET</span></div>
+                <div class="api-desc">Telegram'a SMS spam gönderir.</div>
+                <div class="input-group"><input type="text" id="tgSpamPhone" placeholder="Telefon (905551234567)" value="905551234567"><input type="number" id="tgSpamCount" placeholder="Adet" value="5" min="1" max="100"></div>
+                <div class="api-url" id="tgSpamUrl">https://api-8ne7.onrender.com/tgspam.php?phone=905551234567&count=5</div>
+                <div class="button-group"><button class="try-btn" onclick="testTgSpam()">📨 Dene</button><button class="go-btn" onclick="goToUrl('tgSpamUrl')">🌐 Git</button></div>
+                <div id="result-tgspam" class="result-area"></div>
             </div>
         </div>
     </div>
@@ -396,7 +390,6 @@
         }
     }
 
-    // Görsel dönen API'ler
     async function testBlood() {
         const text = document.getElementById('bloodText').value.trim();
         if (!text) { alert('Lütfen yazı girin!'); return; }
@@ -425,7 +418,6 @@
         resultDiv.innerHTML = `<img src="${url}" style="max-width:100%; border-radius:8px;">`;
     }
 
-    // JSON dönen test fonksiyonları
     async function testInsta() {
         const username = document.getElementById('instaUsername').value.trim();
         if (!username) { alert('Lütfen kullanıcı adı girin!'); return; }
@@ -628,17 +620,6 @@
         try { const response = await fetch(url); const data = await response.json(); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
         catch (error) { resultDiv.innerHTML = `❌ Hata: ${error.message}`; }
     }
-    async function testMarshalEncode() {
-        const code = document.getElementById('marshalCode').value.trim();
-        if (!code) { alert('Lütfen kod girin!'); return; }
-        const url = `${BASE_URL}marshal.php?action=encode&code=${encodeURIComponent(code)}`;
-        document.getElementById('marshalUrl').textContent = url;
-        const resultDiv = document.getElementById('result-marshal');
-        resultDiv.classList.add('active');
-        resultDiv.innerHTML = '⏳ Yükleniyor...';
-        try { const response = await fetch(url); const data = await response.json(); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
-        catch (error) { resultDiv.innerHTML = `❌ Hata: ${error.message}`; }
-    }
     async function testMarshalDecode() {
         const fileInput = document.getElementById('marshalFile');
         if (!fileInput.files.length) { alert('Lütfen bir _enc.py dosyası seçin!'); return; }
@@ -682,6 +663,20 @@
         const url = `${BASE_URL}telegram.php?username=${encodeURIComponent(user)}`;
         document.getElementById('tgUserUrl').textContent = url;
         const resultDiv = document.getElementById('result-tguser');
+        resultDiv.classList.add('active');
+        resultDiv.innerHTML = '⏳ Yükleniyor...';
+        try { const response = await fetch(url); const data = await response.json(); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
+        catch (error) { resultDiv.innerHTML = `❌ Hata: ${error.message}`; }
+    }
+    async function testTgSpam() {
+        let phone = document.getElementById('tgSpamPhone').value.trim();
+        let count = parseInt(document.getElementById('tgSpamCount').value, 10);
+        if (!phone) { alert('Lütfen telefon girin (905551234567)'); return; }
+        if (isNaN(count) || count < 1) count = 5;
+        if (count > 100) count = 100;
+        const url = `${BASE_URL}tgspam.php?phone=${encodeURIComponent(phone)}&count=${count}`;
+        document.getElementById('tgSpamUrl').textContent = url;
+        const resultDiv = document.getElementById('result-tgspam');
         resultDiv.classList.add('active');
         resultDiv.innerHTML = '⏳ Yükleniyor...';
         try { const response = await fetch(url); const data = await response.json(); resultDiv.innerHTML = JSON.stringify(data, null, 2); }
