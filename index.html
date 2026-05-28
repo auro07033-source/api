@@ -321,6 +321,44 @@
                 <div class="button-group"><button class="try-btn" onclick="testTgSpam()">📨 Dene</button><button class="go-btn" onclick="goToUrl('tgSpamUrl')">🌐 Git</button></div>
                 <div id="result-tgspam" class="result-area"></div>
             </div>
+            <div class="api-card">
+                <div class="api-header"><span class="api-name">▶️ YouTube Kanal Bilgisi</span><span class="api-method">GET</span></div>
+                <div class="api-desc">YouTube kanal adına göre abone, video, görüntülenme bilgileri.</div>
+                <div class="input-group"><input type="text" id="youtubeChannel" placeholder="Kanal adı" value="MrBeast"></div>
+                <div class="api-url" id="youtubeUrl">https://api-8ne7.onrender.com/youtube.php?channel=MrBeast</div>
+                <div class="button-group"><button class="try-btn" onclick="testYoutube()">▶️ Dene</button><button class="go-btn" onclick="goToUrl('youtubeUrl')">🌐 Git</button></div>
+                <div id="result-youtube" class="result-area"></div>
+            </div>
+
+            <!-- IBAN Sorgulama -->
+            <div class="api-card">
+                <div class="api-header"><span class="api-name">💳 IBAN Sorgulama</span><span class="api-method">GET</span></div>
+                <div class="api-desc">IBAN numarası doğrulama ve banka bilgileri.</div>
+                <div class="input-group"><input type="text" id="ibanCode" placeholder="IBAN numarası" value="TR330006100519786457841326"></div>
+                <div class="api-url" id="ibanUrl">https://api-8ne7.onrender.com/iban.php?iban=TR330006100519786457841326</div>
+                <div class="button-group"><button class="try-btn" onclick="testIban()">💳 Dene</button><button class="go-btn" onclick="goToUrl('ibanUrl')">🌐 Git</button></div>
+                <div id="result-iban" class="result-area"></div>
+            </div>
+
+            <!-- Hava Durumu -->
+            <div class="api-card">
+                <div class="api-header"><span class="api-name">🌤️ Hava Durumu</span><span class="api-method">GET</span></div>
+                <div class="api-desc">Şehre göre anlık hava durumu ve tahmin.</div>
+                <div class="input-group"><input type="text" id="weatherCity" placeholder="Şehir adı" value="ankara"></div>
+                <div class="api-url" id="weatherUrl">https://api-8ne7.onrender.com/hava.php?sehir=ankara</div>
+                <div class="button-group"><button class="try-btn" onclick="testWeather()">🌤️ Dene</button><button class="go-btn" onclick="goToUrl('weatherUrl')">🌐 Git</button></div>
+                <div id="result-weather" class="result-area"></div>
+            </div>
+
+            <!-- IP Analiz (Secure) -->
+            <div class="api-card">
+                <div class="api-header"><span class="api-name">🛡️ IP Analiz</span><span class="api-method">GET</span></div>
+                <div class="api-desc">IP adresi konum, ISP, VPN/Proxy tespiti.</div>
+                <div class="input-group"><input type="text" id="ipSecure" placeholder="IP adresi" value="8.8.8.8"></div>
+                <div class="api-url" id="ipSecureUrl">https://api-8ne7.onrender.com/ipsecure.php?ip=8.8.8.8</div>
+                <div class="button-group"><button class="try-btn" onclick="testIpSecure()">🛡️ Dene</button><button class="go-btn" onclick="goToUrl('ipSecureUrl')">🌐 Git</button></div>
+                <div id="result-ipsecur" class="result-area"></div>
+            </div>
         </div>
     </div>
 
