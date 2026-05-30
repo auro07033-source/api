@@ -1,7 +1,5 @@
 <?php
 /**
- * Penti Card Points API
- * Kredi kartı puan sorgulama
  * telegram : @unutur
  */
 
@@ -20,7 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     echo json_encode([
         'success' => true,
-        'api' => 'Penti Card Points API',
+        'api' => 'Card Points API',
         'version' => '1.0',
         'endpoint' => 'POST /',
         'parameters' => [
