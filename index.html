@@ -250,7 +250,7 @@
     margin-bottom: .85rem;
     flex-wrap: wrap;
   }
-  .input-group input, .input-group textarea {
+  .input-group input, .input-group textarea, .input-group select {
     flex: 1;
     min-width: 0;
     padding: .7rem .9rem;
@@ -262,11 +262,21 @@
     font-size: .85rem;
     outline: none;
     transition: all .2s;
+    -webkit-appearance: none;
+    appearance: none;
   }
-  .input-group input:focus, .input-group textarea:focus {
+  .input-group select {
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right .9rem center;
+    padding-right: 2.2rem;
+  }
+  .input-group input:focus, .input-group textarea:focus, .input-group select:focus {
     border-color: var(--primary);
     box-shadow: 0 0 0 3px rgba(99,102,241,.15);
   }
+  .input-group select option { background: var(--card-solid); color: var(--text); }
 
   .api-url {
     background: var(--bg);
@@ -379,6 +389,42 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  /* SMS satırları */
+  .sms-item {
+    background: var(--card-solid);
+    border: 1px solid var(--border);
+    border-radius: .6rem;
+    padding: .75rem .9rem;
+    margin-bottom: .55rem;
+    white-space: normal;
+  }
+  .sms-item.has-otp {
+    border-color: rgba(16,185,129,.5);
+    background: rgba(16,185,129,.06);
+  }
+  .sms-head {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: .68rem; color: var(--text-dim);
+    margin-bottom: .4rem; gap: .5rem;
+  }
+  .sms-head .sender { color: var(--primary); font-weight: 700; }
+  .sms-body {
+    font-size: .78rem; color: var(--text); line-height: 1.5;
+    word-break: break-word; font-family: inherit;
+  }
+  .otp-tag {
+    display: inline-flex; align-items: center; gap: .35rem;
+    margin-top: .5rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 800; font-size: .82rem;
+    color: var(--success);
+    background: rgba(16,185,129,.12);
+    border: 1px solid rgba(16,185,129,.4);
+    padding: .2rem .6rem;
+    border-radius: 6px;
+    letter-spacing: .12em;
+  }
+
   /* FOOTER */
   .footer {
     text-align: center;
@@ -440,6 +486,7 @@
     </div>
   </div>
 
+  <!-- BINANCE -->
   <div class="category">
     <div class="category-title">💹 Binance Sorgulama <span class="count">1 endpoint</span></div>
     <div class="grid">
@@ -465,6 +512,44 @@
         </div>
 
         <div id="result-binance" class="result-area"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SMS OTP -->
+  <div class="category">
+    <div class="category-title">📡 SMS / OTP Sorgulama <span class="count">1 endpoint</span></div>
+    <div class="grid">
+      <div class="api-card">
+        <div class="api-header">
+          <span class="api-name">📡 SMS OTP Sorgu</span>
+          <span class="api-method">GET</span>
+        </div>
+        <div class="api-desc">Public numaralardan gelen SMS'leri ve OTP kodlarını çeker. Ülke seç → numara seç → SMS'leri görüntüle. OTP'li mesajlar otomatik vurgulanır.</div>
+
+        <div class="input-group">
+          <select id="otpCountry">
+            <option value="">ülke yükleniyor...</option>
+          </select>
+        </div>
+
+        <div class="input-group">
+          <select id="otpPhone">
+            <option value="">önce ülke seç</option>
+          </select>
+        </div>
+
+        <div class="api-url" id="otpUrlBox">
+          <span class="url-text" id="otpUrl">https://ucretsizservicetr.onrender.com/smsotp.php?action=countries</span>
+          <button class="copy-btn" onclick="copyUrl('otpUrl')">kopyala</button>
+        </div>
+
+        <div class="button-group">
+          <button class="try-btn" id="otpBtn" onclick="otpFetch()">📡 SMS Getir</button>
+          <button class="go-btn" onclick="goToUrl('otpUrl')">🌐 Aç</button>
+        </div>
+
+        <div id="result-otp" class="result-area"></div>
       </div>
     </div>
   </div>
@@ -513,7 +598,11 @@
     navigator.clipboard?.writeText(el.textContent).then(() => showToast('URL kopyalandı'));
   }
 
-  // Binance sorgu
+  function escHtml(s){
+    return String(s||"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+
+  // ═════════ BINANCE ═════════
   async function testBinance() {
     const q = document.getElementById('binanceQuery').value.trim();
     if (!q) { showToast('Lütfen bir değer gir'); return; }
@@ -547,7 +636,7 @@
           }
           resultDiv.innerHTML =
             `<div class="result-badge ok">✓ ÇALIŞAN PARAMETRE: ${p}</div>` +
-            `${body}`;
+            `${escHtml(body)}`;
           btn.disabled = false;
           btn.innerHTML = '💹 Sorgula';
           return;
@@ -560,10 +649,118 @@
     btn.innerHTML = '💹 Sorgula';
   }
 
-  // Enter ile sorgula
   document.getElementById('binanceQuery').addEventListener('keypress', e => {
     if (e.key === 'Enter') testBinance();
   });
+
+  // ═════════ SMS OTP ═════════
+  const OTP_API = "https://ucretsizservicetr.onrender.com/smsotp.php";
+
+  async function otpCall(params){
+    const u = new URL(OTP_API);
+    Object.entries(params).forEach(([k,v]) => u.searchParams.set(k, v));
+    document.getElementById('otpUrl').textContent = u.toString();
+    const r = await fetch(u.toString());
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const d = await r.json();
+    if (!d.success) throw new Error(d.error || "api hatası");
+    return d;
+  }
+
+  async function otpLoadCountries(){
+    const sel = document.getElementById('otpCountry');
+    try {
+      const d = await otpCall({action: "countries"});
+      sel.innerHTML = "";
+      d.data.forEach(c => {
+        const o = document.createElement("option");
+        o.value = c.slug;
+        o.textContent = c.name + "  ·  " + c.slug;
+        sel.appendChild(o);
+      });
+      otpLoadNumbers();
+    } catch (e) {
+      sel.innerHTML = '<option value="">yüklenemedi</option>';
+    }
+  }
+
+  async function otpLoadNumbers(){
+    const country = document.getElementById('otpCountry').value;
+    const sel = document.getElementById('otpPhone');
+    if (!country) { sel.innerHTML = '<option value="">önce ülke seç</option>'; return; }
+    sel.innerHTML = '<option value="">numaralar yükleniyor...</option>';
+    try {
+      const d = await otpCall({action: "numbers", country});
+      sel.innerHTML = "";
+      if (!d.data || !d.data.length) {
+        sel.innerHTML = '<option value="">numara yok</option>';
+        return;
+      }
+      d.data.forEach(n => {
+        const o = document.createElement("option");
+        o.value = n.phone;
+        o.textContent = (n.display || n.phone) + "  ·  " + (n.country || "");
+        sel.appendChild(o);
+      });
+    } catch (e) {
+      sel.innerHTML = '<option value="">hata: ' + escHtml(e.message) + '</option>';
+    }
+  }
+
+  async function otpFetch(){
+    const btn = document.getElementById('otpBtn');
+    const res = document.getElementById('result-otp');
+    const country = document.getElementById('otpCountry').value;
+    const phone   = document.getElementById('otpPhone').value;
+
+    if (!country || !phone) {
+      res.classList.add("active");
+      res.innerHTML = '<div class="result-badge err">✗ ülke ve numara seç</div>';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> çekiliyor...';
+    res.classList.add("active");
+    res.innerHTML = '<span class="spinner"></span> SMS\'ler alınıyor...';
+
+    try {
+      const d = await otpCall({action: "sms", country, phone});
+      const list = d.data || [];
+
+      if (!list.length) {
+        res.innerHTML = `<div class="result-badge err">✗ SMS yok</div>${escHtml(phone)} numarasına henüz mesaj gelmemiş.`;
+        return;
+      }
+
+      list.sort((a,b) => (b.otp ? 1 : 0) - (a.otp ? 1 : 0));
+
+      let html = `<div class="result-badge ok">✓ ${list.length} SMS bulundu</div>`;
+      list.forEach(m => {
+        const otpTag = m.otp
+          ? `<div class="otp-tag">OTP · ${escHtml(m.otp)}</div>`
+          : "";
+        html += `
+          <div class="sms-item${m.otp ? ' has-otp' : ''}">
+            <div class="sms-head">
+              <span class="sender">${escHtml(m.sender || "-")}</span>
+              <span>${escHtml(m.date || "")}</span>
+            </div>
+            <div class="sms-body">${escHtml(m.text || "")}</div>
+            ${otpTag}
+          </div>`;
+      });
+      res.innerHTML = html;
+    } catch (e) {
+      res.innerHTML = `<div class="result-badge err">✗ hata</div>${escHtml(e.message)}`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "📡 SMS Getir";
+    }
+  }
+
+  document.getElementById('otpCountry').addEventListener('change', otpLoadNumbers);
+  otpLoadCountries();
 </script>
 
 </body>
