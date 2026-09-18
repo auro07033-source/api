@@ -514,7 +514,7 @@
     <div class="grid">
       <div class="api-card">
         <div class="api-header">
-          <span class="api-name">📡 SMS-Online.co OTP Sorgu</span>
+          <span class="api-name">📡 SMS-Online OTP Sorgu</span>
           <span class="api-method">GET</span>
         </div>
         <div class="api-desc">sms-online.co public numaralarından SMS ve OTP kodları. Ülke seç → numara seç → SMS listesi. OTP'li mesajlar otomatik vurgulanır.</div>
@@ -528,7 +528,7 @@
         </div>
 
         <div class="input-group">
-          <input type="text" id="otpManual" placeholder="veya manuel numara (ör. 46769436266)" autocomplete="off">
+          <input type="text" id="otpManual" placeholder="veya manuel numara (ör. 48728706124)" autocomplete="off">
         </div>
 
         <div class="api-url" id="otpUrlBox">
@@ -643,7 +643,7 @@
     if (e.key === 'Enter') testBinance();
   });
 
-  // ═════════ SMS OTP (sms-online.co) ═════════
+  // ═════════ SMS OTP ═════════
   const OTP_API = "https://ucretsizservicetr.onrender.com/smsotp.php";
   const OTP_COUNTRY = document.getElementById('otpCountry');
   const OTP_PHONE   = document.getElementById('otpPhone');
@@ -664,10 +664,9 @@
 
   async function otpLoadCountries(){
     try {
-      const d = await otpCall({action: "countries"});
+      const d = await otpCall({action: "numbers"});
       OTP_COUNTRY.innerHTML = "";
 
-      // Ülkeleri grupla
       const gruplar = {};
       (d.data || []).forEach(n => {
         const c = n.country || "unknown";
@@ -701,19 +700,22 @@
       OTP_PHONE.innerHTML = '<option value="">önce ülke seç</option>';
       return;
     }
-    OTP_PHONE.innerHTML = '<option value="">numaralar yükleniyor...</option>';
+    OTP_PHONE.innerHTML = '<option value="">yükleniyor...</option>';
 
     try {
-      const d = await otpCall({action: "numbers", country});
+      const d = await otpCall({action: "numbers"});
       OTP_PHONE.innerHTML = "";
-      if (!d.data || !d.data.length) {
+      const filtreli = (d.data || []).filter(n => n.country === country);
+
+      if (!filtreli.length) {
         OTP_PHONE.innerHTML = '<option value="">numara yok (manuel gir)</option>';
         return;
       }
-      d.data.forEach(n => {
+
+      filtreli.forEach(n => {
         const o = document.createElement("option");
         o.value = n.phone;
-        o.textContent = (n.display || ("+" + n.phone)) + "  ·  " + n.country;
+        o.textContent = (n.display || ("+" + n.phone));
         OTP_PHONE.appendChild(o);
       });
     } catch (e) {
@@ -748,7 +750,6 @@
         return;
       }
 
-      // OTP'li olanları öne al
       list.sort((a,b) => (b.otp ? 1 : 0) - (a.otp ? 1 : 0));
 
       let html = `<div class="result-badge ok">✓ ${list.length} SMS bulundu</div>`;
