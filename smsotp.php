@@ -1,58 +1,52 @@
 <?php
 /**
- * 📡 SMSToMe OTP API — @cmrbaskani
- * https://ucretsizservicetr.onrender.com/smsotp.php
+ * 📡 SMS24.me OTP API — @cmrbaskani
+ * https://senin-domain/sms24.php
  *
- * Endpointler:
  *   GET ?action=countries
- *   GET ?action=numbers&country=belgium
- *   GET ?action=sms&country=belgium&phone=32468798844
- *   GET ?action=otp&country=belgium&phone=32468798844&limit=3
- *   GET ?action=latest&country=belgium&phone=32468798844
- *   GET ?action=health
- *   GET ?action=debug&country=belgium
+ *   GET ?action=numbers&country=us
+ *   GET ?action=sms&country=us&phone=1xxxxxxxxxx
+ *   GET ?action=latest&country=us&phone=1xxxxxxxxxx
+ *   GET ?action=debug&country=us
  */
 
 header("Content-Type: application/json; charset=utf-8");
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type");
-
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 
-// ─── AYARLAR ───
-define('BASE_URL', 'https://smstome.com');
-define('UA', 'Mozilla/5.0 (Android 15; Mobile; rv:155.0) Gecko/155.0 Firefox/155.0');
-define('CACHE_DIR', sys_get_temp_dir() . '/smsotp_cache');
+define('BASE_URL', 'https://sms24.me');
+define('UA', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36');
+define('CACHE_DIR', sys_get_temp_dir() . '/sms24_cache');
 define('CACHE_TTL', 5);
 
+// 53 ülke (slug => isim)
 $COUNTRIES = [
-    'united-kingdom' => ['name' => 'Birleşik Krallık (+44)', 'prefix' => '44'],
-    'netherlands'    => ['name' => 'Hollanda (+31)',         'prefix' => '31'],
-    'poland'         => ['name' => 'Polonya (+48)',          'prefix' => '48'],
-    'finland'        => ['name' => 'Finlandiya (+358)',      'prefix' => '358'],
-    'belgium'        => ['name' => 'Belçika (+32)',          'prefix' => '32'],
-    'slovenia'       => ['name' => 'Slovenya (+386)',        'prefix' => '386'],
+  'ar'=>'🇦🇷 Arjantin','au'=>'🇦🇺 Avustralya','at'=>'🇦🇹 Avusturya','bd'=>'🇧🇩 Bangladeş',
+  'be'=>'🇧🇪 Belçika','br'=>'🇧🇷 Brezilya','bg'=>'🇧🇬 Bulgaristan','ca'=>'🇨🇦 Kanada',
+  'cl'=>'🇨🇱 Şili','cn'=>'🇨🇳 Çin','co'=>'🇨🇴 Kolombiya','hr'=>'🇭🇷 Hırvatistan',
+  'cz'=>'🇨🇿 Çekya','dk'=>'🇩🇰 Danimarka','ee'=>'🇪🇪 Estonya','fi'=>'🇫🇮 Finlandiya',
+  'fr'=>'🇫🇷 Fransa','ge'=>'🇬🇪 Gürcistan','de'=>'🇩🇪 Almanya','hk'=>'🇭🇰 Hong Kong',
+  'in'=>'🇮🇳 Hindistan','id'=>'🇮🇩 Endonezya','il'=>'🇮🇱 İsrail','it'=>'🇮🇹 İtalya',
+  'jp'=>'🇯🇵 Japonya','kz'=>'🇰🇿 Kazakistan','lv'=>'🇱🇻 Letonya','lt'=>'🇱🇹 Litvanya',
+  'my'=>'🇲🇾 Malezya','mx'=>'🇲🇽 Meksika','mm'=>'🇲🇲 Myanmar','nl'=>'🇳🇱 Hollanda',
+  'nz'=>'🇳🇿 Yeni Zelanda','ng'=>'🇳🇬 Nijerya','no'=>'🇳🇴 Norveç','ph'=>'🇵🇭 Filipinler',
+  'pl'=>'🇵🇱 Polonya','pt'=>'🇵🇹 Portekiz','pr'=>'🇵🇷 Porto Riko','ro'=>'🇷🇴 Romanya',
+  'ru'=>'🇷🇺 Rusya','rs'=>'🇷🇸 Sırbistan','za'=>'🇿🇦 Güney Afrika','kr'=>'🇰🇷 Güney Kore',
+  'es'=>'🇪🇸 İspanya','se'=>'🇸🇪 İsveç','ch'=>'🇨🇭 İsviçre','th'=>'🇹🇭 Tayland',
+  'ua'=>'🇺🇦 Ukrayna','gb'=>'🇬🇧 Birleşik Krallık','us'=>'🇺🇸 ABD','uz'=>'🇺🇿 Özbekistan',
+  'vn'=>'🇻🇳 Vietnam',
 ];
 
-// ─── YARDIMCI ───
-function json_out($data, $code = 200) {
-    http_response_code($code);
-    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
-    exit;
-}
-function err($msg, $code = 400) { json_out(["success" => false, "error" => $msg], $code); }
+function json_out($d, $c=200){ http_response_code($c); echo json_encode($d, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT); exit; }
+function err($m, $c=400){ json_out(["success"=>false,"error"=>$m], $c); }
 
-function cache_path($key) {
-    if (!is_dir(CACHE_DIR)) @mkdir(CACHE_DIR, 0777, true);
-    return CACHE_DIR . '/' . md5($key) . '.cache';
-}
+function cache_path($k){ if(!is_dir(CACHE_DIR)) @mkdir(CACHE_DIR,0777,true); return CACHE_DIR.'/'.md5($k).'.cache'; }
 
-function fetch_url($url, $bypass_cache = false) {
+function fetch_url($url, $bypass=false){
     $cf = cache_path($url);
-    if (!$bypass_cache && file_exists($cf) && (time() - filemtime($cf)) < CACHE_TTL) {
-        return file_get_contents($cf);
-    }
+    if(!$bypass && file_exists($cf) && (time()-filemtime($cf))<CACHE_TTL) return file_get_contents($cf);
 
     $ch = curl_init($url);
     curl_setopt_array($ch, [
@@ -65,110 +59,72 @@ function fetch_url($url, $bypass_cache = false) {
         CURLOPT_SSL_VERIFYPEER => false,
         CURLOPT_SSL_VERIFYHOST => false,
         CURLOPT_HTTPHEADER     => [
-            'User-Agent: ' . UA,
+            'User-Agent: '.UA,
             'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Accept-Language: en-US,en;q=0.9',
-            'Referer: ' . BASE_URL . '/',
+            'Referer: '.BASE_URL.'/',
         ],
     ]);
-
     $body = curl_exec($ch);
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
-
-    if ($code !== 200 || !$body) return null;
-
+    if($code !== 200 || !$body) return null;
     @file_put_contents($cf, $body);
     return $body;
 }
 
-function clean_text($s) {
-    return trim(preg_replace('/\s+/', ' ', $s ?? ''));
-}
+function clean_t($s){ return trim(preg_replace('/\s+/',' ',$s??'')); }
 
-function extract_otp($text) {
-    if (preg_match('/\b(\d{4,8})\b/', $text, $m)) return $m[1];
+function extract_otp($text){
+    // 4-8 haneli, ortada rakam grubu
+    if(preg_match('/\b(\d{4,8})\b/', $text, $m)) return $m[1];
     return null;
 }
 
-// ─── NUMARA PARSER (regex + DOM fallback, login arkasını da dener) ───
-function parse_numbers($html, $country, $prefix = '') {
-    if (!$html) return [];
+// ─── NUMARA PARSER ───
+// sms24.me numara linkleri: /en/numbers/<num> veya /en/phone/<num> formatında
+function parse_numbers($html, $country){
+    if(!$html) return [];
     $nums = [];
     $seen = [];
 
-    // 1) Ham HTML'deki tüm href'leri tara
-    if (preg_match_all('#href=["\']([^"\']+)["\']#i', $html, $matches)) {
-        foreach ($matches[1] as $href) {
+    // Tüm href'leri yakala
+    if(preg_match_all('#href=["\']([^"\']+)["\']#i', $html, $matches)){
+        foreach($matches[1] as $href){
             $num = null;
-
-            // /phone/<num>/sms/<id>
-            if (preg_match('#/phone/(\+?\d{7,15})/sms/\d+#', $href, $m)) {
-                $num = ltrim($m[1], '+');
+            // /en/numbers/1xxxxxxxxxx
+            if(preg_match('#/numbers/(\+?\d{7,15})#', $href, $m)){
+                $num = ltrim($m[1],'+');
             }
-            // /<num>/sms/<id> veya /number/<num>
-            elseif (preg_match('#/(?:sms|number)/(\+?\d{7,15})#', $href, $m)) {
-                $num = ltrim($m[1], '+');
+            // /en/phone/1xxxxxxxxxx
+            elseif(preg_match('#/phone/(\+?\d{7,15})#', $href, $m)){
+                $num = ltrim($m[1],'+');
             }
-            // direkt numara
-            elseif (preg_match('#/(\+?\d{10,15})(?:/|$)#', $href, $m)) {
-                $num = ltrim($m[1], '+');
-            }
-
-            if (!$num || strlen($num) < 8) continue;
-            if ($prefix && strpos($num, $prefix) !== 0) continue;
-            if (isset($seen[$num])) continue;
+            if(!$num || strlen($num)<7) continue;
+            if(isset($seen[$num])) continue;
             $seen[$num] = true;
 
-            $full = (strpos($href, 'http') === 0) ? $href : BASE_URL . $href;
+            $full = (strpos($href,'http')===0) ? $href : BASE_URL.$href;
 
             $nums[] = [
                 "phone"   => $num,
-                "display" => '+' . $num,
+                "display" => '+'.$num,
                 "url"     => $full,
                 "country" => $country,
             ];
         }
     }
 
-    // 2) Hiç bulunamadıysa DOM dene
-    if (empty($nums) && class_exists('DOMDocument')) {
-        libxml_use_internal_errors(true);
-        $dom = new DOMDocument();
-        @$dom->loadHTML('<?xml encoding="UTF-8">' . $html);
-        libxml_clear_errors();
-        $xpath = new DOMXPath($dom);
-
-        foreach ($xpath->query('//a[@href]') as $a) {
-            $href = $a->getAttribute('href');
-            if (!preg_match('#(\+?\d{10,15})#', $href, $m)) continue;
-            $num = ltrim($m[1], '+');
-            if (strlen($num) < 8 || isset($seen[$num])) continue;
-            if ($prefix && strpos($num, $prefix) !== 0) continue;
-            $seen[$num] = true;
-
-            $txt = clean_text($a->textContent);
-            $full = (strpos($href, 'http') === 0) ? $href : BASE_URL . $href;
-            $nums[] = [
-                "phone"   => $num,
-                "display" => ($txt && $txt[0] === '+') ? $txt : '+' . $num,
-                "url"     => $full,
-                "country" => $country,
-            ];
-        }
-    }
-
-    // 3) Hâlâ boşsa: sayfa metnindeki tüm numaraları al (prefix filtreli)
-    if (empty($nums) && $prefix) {
-        if (preg_match_all('#\+?' . $prefix . '\d{7,12}#', $html, $matches)) {
-            foreach ($matches[0] as $raw) {
-                $num = ltrim($raw, '+');
-                if (strlen($num) < 8 || isset($seen[$num])) continue;
+    // Hiç bulunamadıysa: sayfadaki numaraları ülke prefix'i ile ara
+    if(empty($nums)){
+        if(preg_match_all('#\b(\d{10,15})\b#', $html, $m)){
+            foreach($m[1] as $num){
+                if(isset($seen[$num])) continue;
                 $seen[$num] = true;
                 $nums[] = [
                     "phone"   => $num,
-                    "display" => '+' . $num,
-                    "url"     => BASE_URL . "/$country/phone/$num/sms/0",
+                    "display" => '+'.$num,
+                    "url"     => BASE_URL."/en/numbers/$num",
                     "country" => $country,
                 ];
             }
@@ -179,66 +135,47 @@ function parse_numbers($html, $country, $prefix = '') {
 }
 
 // ─── SMS PARSER ───
-function parse_sms($html) {
-    if (!$html) return [];
+// sms24.me numara sayfasında SMS listesi tablo veya div kartları olarak gelir
+function parse_sms($html){
+    if(!$html) return [];
     $msj = [];
 
-    if (class_exists('DOMDocument')) {
+    if(class_exists('DOMDocument')){
         libxml_use_internal_errors(true);
         $dom = new DOMDocument();
-        @$dom->loadHTML('<?xml encoding="UTF-8">' . $html);
+        @$dom->loadHTML('<?xml encoding="UTF-8">'.$html);
         libxml_clear_errors();
-        $xpath = new DOMXPath($dom);
+        $x = new DOMXPath($dom);
 
-        // Tablo satırları
-        foreach ($xpath->query('//tr') as $tr) {
-            $cells = $xpath->query('.//td', $tr);
-            if ($cells->length < 2) continue;
-            $parts = [];
-            foreach ($cells as $c) $parts[] = clean_text($c->textContent);
-            $from = $parts[0] ?? '';
-            $text = $parts[1] ?? '';
-            $date = $parts[2] ?? '';
-            if (!$from || strtolower($from) === 'from' || strtolower($from) === 'sender') continue;
-            if (!$text) continue;
+        // Yaygın class isimleri
+        foreach($x->query('//div[contains(@class,"message") or contains(@class,"sms") or contains(@class,"msg") or contains(@class,"card")]') as $d){
+            $t = clean_t($d->textContent);
+            if(strlen($t)<5 || strlen($t)>2000) continue;
+            // "from" veya "sender" alanını ayıkla
+            $sender = '';
+            if(preg_match('/(?:from|sender|gönderen)\s*:?\s*([^\n]{2,40})/i', $t, $mm)) $sender = $mm[1];
             $msj[] = [
-                "sender" => $from,
-                "text"   => $text,
-                "date"   => $date,
-                "otp"    => extract_otp($text),
+                "sender" => $sender ?: "unknown",
+                "text"   => $t,
+                "date"   => "",
+                "otp"    => extract_otp($t),
             ];
         }
 
-        // div-based
-        if (empty($msj)) {
-            foreach ($xpath->query('//div[contains(@class,"message") or contains(@class,"sms") or contains(@class,"msg")]') as $d) {
-                $t = clean_text($d->textContent);
-                if (strlen($t) < 10) continue;
+        // Tablo yapısı
+        if(empty($msj)){
+            foreach($x->query('//tr') as $tr){
+                $cells = $x->query('.//td', $tr);
+                if($cells->length<2) continue;
+                $p = [];
+                foreach($cells as $c) $p[] = clean_t($c->textContent);
+                if(!$p[0] || strtolower($p[0])==='from') continue;
                 $msj[] = [
-                    "sender" => "unknown",
-                    "text"   => $t,
-                    "date"   => "",
-                    "otp"    => extract_otp($t),
+                    "sender" => $p[0],
+                    "text"   => $p[1] ?? '',
+                    "date"   => $p[2] ?? '',
+                    "otp"    => extract_otp($p[1] ?? ''),
                 ];
-            }
-        }
-    }
-
-    // regex fallback: <tr>...</tr> satırlarını yakala
-    if (empty($msj)) {
-        if (preg_match_all('#<tr[^>]*>(.*?)</tr>#is', $html, $rows)) {
-            foreach ($rows[1] as $row) {
-                if (preg_match_all('#<td[^>]*>(.*?)</td>#is', $row, $cells)) {
-                    $c = array_map(function($x){ return clean_text(strip_tags($x)); }, $cells[1]);
-                    if (count($c) < 2) continue;
-                    if (!$c[0] || strtolower($c[0]) === 'from') continue;
-                    $msj[] = [
-                        "sender" => $c[0],
-                        "text"   => $c[1] ?? '',
-                        "date"   => $c[2] ?? '',
-                        "otp"    => extract_otp($c[1] ?? ''),
-                    ];
-                }
             }
         }
     }
@@ -249,135 +186,67 @@ function parse_sms($html) {
 // ─── ROUTER ───
 $action = $_GET['action'] ?? 'countries';
 
-switch ($action) {
+switch($action){
 
-    // 1) ÜLKELER
     case 'countries':
         $out = [];
-        foreach ($GLOBALS['COUNTRIES'] as $slug => $c) {
+        foreach($GLOBALS['COUNTRIES'] as $slug=>$name){
             $out[] = [
                 "slug" => $slug,
-                "name" => $c['name'],
-                "url"  => BASE_URL . "/country/" . $slug,
+                "name" => $name,
+                "url"  => BASE_URL."/en/countries/".$slug,
             ];
         }
-        json_out(["success" => true, "count" => count($out), "data" => $out]);
+        json_out(["success"=>true,"count"=>count($out),"data"=>$out]);
         break;
 
-    // 2) NUMARALAR
     case 'numbers':
-        $country = $_GET['country'] ?? '';
-        if (!isset($GLOBALS['COUNTRIES'][$country])) {
-            err("geçersiz country. Geçerli: " . implode(', ', array_keys($GLOBALS['COUNTRIES'])));
-        }
-        $prefix = $GLOBALS['COUNTRIES'][$country]['prefix'];
-
-        $html = fetch_url(BASE_URL . "/country/" . $country);
-        $nums = $html ? parse_numbers($html, $country, $prefix) : [];
-
-        // Boşsa ana sayfadan dene
-        if (empty($nums)) {
-            $home = fetch_url(BASE_URL . "/");
-            if ($home) {
-                $nums = parse_numbers($home, $country, $prefix);
-            }
-        }
-
+        $c = $_GET['country'] ?? '';
+        if(!isset($GLOBALS['COUNTRIES'][$c])) err("geçersiz country");
+        $html = fetch_url(BASE_URL."/en/countries/".$c);
+        if(!$html) err("sayfa alınamadı", 502);
+        $nums = parse_numbers($html, $c);
         json_out([
-            "success" => true,
-            "country" => $country,
-            "count"   => count($nums),
-            "data"    => $nums,
+            "success"=>true,"country"=>$c,
+            "count"=>count($nums),"data"=>$nums,
         ]);
         break;
 
-    // 3) TÜM SMS
     case 'sms':
-        $country = $_GET['country'] ?? '';
-        $phone   = preg_replace('/\D/', '', $_GET['phone'] ?? '');
-        if (!isset($GLOBALS['COUNTRIES'][$country])) err("geçersiz country");
-        if (!$phone) err("phone gerekli");
+        $c = $_GET['country'] ?? '';
+        $p = preg_replace('/\D/','',$_GET['phone'] ?? '');
+        if(!isset($GLOBALS['COUNTRIES'][$c])) err("geçersiz country");
+        if(!$p) err("phone gerekli");
 
-        $url  = BASE_URL . "/$country/phone/$phone/sms/0";
-        $html = fetch_url($url);
-        if (!$html) {
-            $html = fetch_url(BASE_URL . "/$country/phone/$phone/sms/1");
-        }
-        if (!$html) err("numara sayfası alınamadı", 502);
+        // sms24.me numara sayfası
+        $html = fetch_url(BASE_URL."/en/numbers/".$p);
+        if(!$html) $html = fetch_url(BASE_URL."/en/phone/".$p);
+        if(!$html) err("numara sayfası alınamadı", 502);
 
         $msj = parse_sms($html);
         json_out([
-            "success" => true,
-            "country" => $country,
-            "phone"   => $phone,
-            "count"   => count($msj),
-            "data"    => $msj,
+            "success"=>true,"country"=>$c,"phone"=>$p,
+            "count"=>count($msj),"data"=>$msj,
         ]);
         break;
 
-    // 4) OTP LİSTESİ
-    case 'otp':
-        $country = $_GET['country'] ?? '';
-        $phone   = preg_replace('/\D/', '', $_GET['phone'] ?? '');
-        $limit   = min(20, max(1, (int)($_GET['limit'] ?? 3)));
-        if (!isset($GLOBALS['COUNTRIES'][$country])) err("geçersiz country");
-        if (!$phone) err("phone gerekli");
-
-        $url  = BASE_URL . "/$country/phone/$phone/sms/0";
-        $html = fetch_url($url);
-        if (!$html) $html = fetch_url(BASE_URL . "/$country/phone/$phone/sms/1");
-        if (!$html) err("numara sayfası alınamadı", 502);
-
-        $msj = parse_sms($html);
-        $otpler = [];
-        foreach (array_slice($msj, 0, $limit) as $m) {
-            $otpler[] = [
-                "sender" => $m['sender'],
-                "text"   => $m['text'],
-                "date"   => $m['date'],
-                "otp"    => $m['otp'],
-            ];
-        }
-        json_out([
-            "success" => true,
-            "country" => $country,
-            "phone"   => $phone,
-            "count"   => count($otpler),
-            "data"    => $otpler,
-        ]);
-        break;
-
-    // 5) SON OTP (tek mesaj)
     case 'latest':
-        $country = $_GET['country'] ?? '';
-        $phone   = preg_replace('/\D/', '', $_GET['phone'] ?? '');
-        if (!isset($GLOBALS['COUNTRIES'][$country])) err("geçersiz country");
-        if (!$phone) err("phone gerekli");
+        $c = $_GET['country'] ?? '';
+        $p = preg_replace('/\D/','',$_GET['phone'] ?? '');
+        if(!isset($GLOBALS['COUNTRIES'][$c])) err("geçersiz country");
+        if(!$p) err("phone gerekli");
 
-        $url  = BASE_URL . "/$country/phone/$phone/sms/0";
-        $html = fetch_url($url);
-        if (!$html) $html = fetch_url(BASE_URL . "/$country/phone/$phone/sms/1");
-        if (!$html) err("numara sayfası alınamadı", 502);
+        $html = fetch_url(BASE_URL."/en/numbers/".$p);
+        if(!$html) $html = fetch_url(BASE_URL."/en/phone/".$p);
+        if(!$html) err("numara sayfası alınamadı", 502);
 
         $msj = parse_sms($html);
-        if (empty($msj)) {
-            json_out([
-                "success" => true,
-                "country" => $country,
-                "phone"   => $phone,
-                "count"   => 0,
-                "data"    => [],
-            ]);
-        }
+        if(empty($msj)) json_out(["success"=>true,"phone"=>$p,"count"=>0,"data"=>[]]);
 
-        // En yeni mesaj genelde ilk eleman
         $son = $msj[0];
         json_out([
-            "success" => true,
-            "country" => $country,
-            "phone"   => $phone,
-            "count"   => 1,
-            "data"    => [[
+            "success"=>true,"phone"=>$p,"count"=>1,
+            "data"=>[[
                 "sender" => $son['sender'],
                 "text"   => $son['text'],
                 "date"   => $son['date'],
@@ -386,43 +255,37 @@ switch ($action) {
         ]);
         break;
 
-    // 6) HEALTH
     case 'health':
         json_out([
-            "success" => true,
-            "status"  => "ok",
-            "time"    => date("c"),
-            "base"    => BASE_URL,
-            "php"     => PHP_VERSION,
-            "curl"    => function_exists('curl_init'),
-            "dom"     => class_exists('DOMDocument'),
+            "success"=>true,"status"=>"ok","time"=>date("c"),
+            "php"=>PHP_VERSION,
+            "curl"=>function_exists('curl_init'),
+            "dom"=>class_exists('DOMDocument'),
         ]);
         break;
 
-    // 7) DEBUG — ham HTML
     case 'debug':
         header("Content-Type: text/plain; charset=utf-8");
-        $country = $_GET['country'] ?? 'united-kingdom';
-        $url = BASE_URL . "/country/" . $country;
-
+        $c = $_GET['country'] ?? 'us';
+        $url = BASE_URL."/en/countries/".$c;
         echo "URL       : $url\n";
-        echo "PHP       : " . PHP_VERSION . "\n";
-        echo "cURL      : " . (function_exists('curl_init') ? "OK" : "MISSING") . "\n";
-        echo "DOM       : " . (class_exists('DOMDocument') ? "OK" : "MISSING") . "\n";
-        echo str_repeat("-", 60) . "\n\n";
+        echo "PHP       : ".PHP_VERSION."\n";
+        echo "cURL      : ".(function_exists('curl_init')?"OK":"MISSING")."\n";
+        echo "DOM       : ".(class_exists('DOMDocument')?"OK":"MISSING")."\n";
+        echo str_repeat("-",60)."\n\n";
 
         $ch = curl_init($url);
-        curl_setopt_array($ch, [
+        curl_setopt_array($ch,[
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_TIMEOUT        => 20,
             CURLOPT_ENCODING       => '',
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_HTTPHEADER     => [
-                'User-Agent: ' . UA,
+                'User-Agent: '.UA,
                 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                 'Accept-Language: en-US,en;q=0.9',
-                'Referer: ' . BASE_URL . '/',
+                'Referer: '.BASE_URL.'/',
             ],
         ]);
         $body = curl_exec($ch);
@@ -430,13 +293,13 @@ switch ($action) {
         $cerr = curl_error($ch);
         curl_close($ch);
 
-        echo "HTTP_CODE : " . $info['http_code'] . "\n";
-        echo "SIZE      : " . strlen($body ?: '') . " bytes\n";
-        echo "CURL_ERR  : " . ($cerr ?: "-") . "\n";
-        echo "FINAL_URL : " . ($info['url'] ?? '-') . "\n\n";
-        echo str_repeat("-", 60) . "\n\n";
+        echo "HTTP_CODE : ".$info['http_code']."\n";
+        echo "SIZE      : ".strlen($body?:'')." bytes\n";
+        echo "CURL_ERR  : ".($cerr?:"-")."\n";
+        echo "FINAL_URL : ".($info['url']??'-')."\n\n";
+        echo str_repeat("-",60)."\n\n";
         echo "HTML (ilk 4000):\n\n";
-        echo substr($body ?: "(BOŞ)", 0, 4000);
+        echo substr($body?:"(BOŞ)",0,4000);
         exit;
 
     default:
