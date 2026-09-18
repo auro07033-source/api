@@ -510,29 +510,25 @@
 
   <!-- SMS OTP -->
   <div class="category">
-    <div class="category-title">📡 SMS / OTP Sorgulama <span class="count" id="otpCount">53 ülke</span></div>
+    <div class="category-title">📡 SMS / OTP Sorgulama <span class="count" id="otpCount">-</span></div>
     <div class="grid">
       <div class="api-card">
         <div class="api-header">
-          <span class="api-name">📡 SMS24.me OTP Sorgu</span>
+          <span class="api-name">📡 SMS-Online.co OTP Sorgu</span>
           <span class="api-method">GET</span>
         </div>
-        <div class="api-desc">sms24.me public numaralarından SMS ve OTP kodlarını çeker. Ülke seç → numara seç → SMS listesi. OTP'li mesajlar otomatik vurgulanır.</div>
+        <div class="api-desc">sms-online.co public numaralarından SMS ve OTP kodları. Ülke seç → numara seç → SMS listesi. OTP'li mesajlar otomatik vurgulanır.</div>
 
         <div class="input-group">
-          <select id="otpCountry">
-            <option value="">ülke yükleniyor...</option>
-          </select>
+          <select id="otpCountry"><option value="">ülke yükleniyor...</option></select>
         </div>
 
         <div class="input-group">
-          <select id="otpPhone">
-            <option value="">önce ülke seç</option>
-          </select>
+          <select id="otpPhone"><option value="">önce ülke seç</option></select>
         </div>
 
         <div class="input-group">
-          <input type="text" id="otpManual" placeholder="veya manuel numara (ör. 12025550143)" autocomplete="off">
+          <input type="text" id="otpManual" placeholder="veya manuel numara (ör. 46769436266)" autocomplete="off">
         </div>
 
         <div class="api-url" id="otpUrlBox">
@@ -647,7 +643,7 @@
     if (e.key === 'Enter') testBinance();
   });
 
-  // ═════════ SMS OTP (sms24.me) ═════════
+  // ═════════ SMS OTP (sms-online.co) ═════════
   const OTP_API = "https://ucretsizservicetr.onrender.com/smsotp.php";
   const OTP_COUNTRY = document.getElementById('otpCountry');
   const OTP_PHONE   = document.getElementById('otpPhone');
@@ -670,13 +666,29 @@
     try {
       const d = await otpCall({action: "countries"});
       OTP_COUNTRY.innerHTML = "";
-      d.data.forEach(c => {
+
+      // Ülkeleri grupla
+      const gruplar = {};
+      (d.data || []).forEach(n => {
+        const c = n.country || "unknown";
+        if (!gruplar[c]) gruplar[c] = [];
+        gruplar[c].push(n);
+      });
+
+      const sirali = Object.keys(gruplar).sort();
+      if (!sirali.length) {
+        OTP_COUNTRY.innerHTML = '<option value="">ülke yok</option>';
+        return;
+      }
+
+      sirali.forEach(c => {
         const o = document.createElement("option");
-        o.value = c.slug;
-        o.textContent = c.name + "  ·  " + c.slug;
+        o.value = c;
+        o.textContent = c + "  ·  " + gruplar[c].length + " numara";
         OTP_COUNTRY.appendChild(o);
       });
-      document.getElementById("otpCount").textContent = d.count + " ülke";
+
+      document.getElementById("otpCount").textContent = d.count + " numara";
       otpLoadNumbers();
     } catch (e) {
       OTP_COUNTRY.innerHTML = '<option value="">yüklenemedi: ' + escHtml(e.message) + '</option>';
@@ -701,7 +713,7 @@
       d.data.forEach(n => {
         const o = document.createElement("option");
         o.value = n.phone;
-        o.textContent = (n.display || ("+" + n.phone)) + "  ·  " + (n.country || "");
+        o.textContent = (n.display || ("+" + n.phone)) + "  ·  " + n.country;
         OTP_PHONE.appendChild(o);
       });
     } catch (e) {
@@ -712,12 +724,11 @@
   async function otpFetch(){
     const btn = document.getElementById('otpBtn');
     const res = document.getElementById('result-otp');
-    const country = OTP_COUNTRY.value;
 
     let phone = (OTP_MANUAL.value || "").replace(/\D/g, "");
     if (!phone) phone = OTP_PHONE.value;
 
-    if (!country || !phone) {
+    if (!phone) {
       res.classList.add("active");
       res.innerHTML = '<div class="result-badge err">✗ ülke ve numara seç</div>';
       return;
@@ -729,7 +740,7 @@
     res.innerHTML = '<span class="spinner"></span> SMS\'ler alınıyor...';
 
     try {
-      const d = await otpCall({action: "sms", country, phone});
+      const d = await otpCall({action: "sms", phone});
       const list = d.data || [];
 
       if (!list.length) {
@@ -737,6 +748,7 @@
         return;
       }
 
+      // OTP'li olanları öne al
       list.sort((a,b) => (b.otp ? 1 : 0) - (a.otp ? 1 : 0));
 
       let html = `<div class="result-badge ok">✓ ${list.length} SMS bulundu</div>`;
