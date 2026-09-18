@@ -167,7 +167,22 @@ function get_sms($phone) {
 
     return $messages;
 }
-
+case 'debug':
+    $html = fetch_url(BASE_URL . '/receive-free-sms', 0);
+    json_out([
+        'success' => true,
+        'url' => BASE_URL . '/receive-free-sms',
+        'length' => strlen($html ?: ''),
+        'sample' => substr($html ?: '', 0, 5000),
+        'links' => array_slice(
+            array_map(
+                fn($m) => $m[0],
+                preg_match_all('#href="([^"]+)"#', $html ?: '', $matches) ? $matches : []
+            ),
+            0, 50
+        )
+    ]);
+    break;
 // ── ROUTE ──
 $action = $_GET['action'] ?? 'numbers';
 
