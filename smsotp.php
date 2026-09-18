@@ -1,13 +1,7 @@
 <?php
 /**
- * 📡 SMS-Online.co OTP API — @cmrbaskani
+ * 📡 Receive-SMS-Online.info OTP API — @cmrbaskani
  * Dosya: smsotp.php
- *
- * Endpointler:
- *   GET smsotp.php?action=countries
- *   GET smsotp.php?action=numbers&country=sweden
- *   GET smsotp.php?action=sms&phone=46769436266
- *   GET smsotp.php?action=otp&phone=46769436266&limit=5
  */
 
 header("Content-Type: application/json; charset=utf-8");
@@ -17,8 +11,7 @@ header("Access-Control-Allow-Headers: Content-Type");
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 
-define('BASE_URL', 'https://sms-online.co');
-define('LIST_URL', BASE_URL . '/receive-free-sms');
+define('BASE_URL', 'https://receive-sms-online.info');
 define('UA', 'Mozilla/5.0 (Android 15; Mobile; rv:155.0) Gecko/155.0 Firefox/155.0');
 define('CACHE_DIR', sys_get_temp_dir() . '/smsotp_cache');
 define('CACHE_TTL', 5);
@@ -70,129 +63,104 @@ function clean_text($s) {
 }
 
 function extract_otp($text) {
-    // Önce "code", "otp", "verification" yakınında rakam ara
     if (preg_match('/(?:code|otp|verification|pin)[\s:]*([0-9]{4,8})/i', $text, $m)) return $m[1];
-    // Direkt 4-8 haneli rakam
     if (preg_match('/\b([0-9]{4,8})\b/', $text, $m)) return $m[1];
     return null;
 }
 
-// ── ÜLKELER ──
-function get_countries() {
-    $html = fetch_url(LIST_URL, 60);
+// ── NUMARALAR (ana sayfa) ──
+function get_numbers() {
+    $html = fetch_url(BASE_URL . '/', 60);
     if (!$html) return [];
 
     $dom = new DOMDocument();
     @$dom->loadHTML('<?xml encoding="UTF-8">' . $html);
     $xpath = new DOMXPath($dom);
 
-    $countries = [];
+    $nums = [];
     $seen = [];
 
-    // Link formatı: /receive-free-sms/<numara> — yanındaki metinde ülke var
-    foreach ($xpath->query('//a[contains(@href,"/receive-free-sms/")]') as $a) {
+    // /<numara>-<ulke> formatındaki linkler
+    foreach ($xpath->query('//a[@href]') as $a) {
         $href = $a->getAttribute('href');
-        if (!preg_match('#/receive-free-sms/(\d{6,15})#', $href, $m)) continue;
-        $phone = $m[1];
-        if (isset($seen[$phone])) continue;
-        $seen[$phone] = true;
+        if (!preg_match('#/(\+?\d{7,15})-([A-Za-z]+)$#', $href, $m)) continue;
+        $num = ltrim($m[1], '+');
+        $country = $m[2];
+        if (isset($seen[$num])) continue;
+        $seen[$num] = true;
 
-        // Ülke bilgisi: çevredeki h2/h3 veya class içinde
-        $country = 'unknown';
-        $parent = $a->parentNode;
-        for ($i = 0; $i < 4 && $parent; $i++) {
-            if ($parent->nodeType === XML_ELEMENT_NODE) {
-                foreach (['h1','h2','h3','h4','.country','.country-name'] as $sel) {
-                    if ($sel[0] === '.') {
-                        $nodes = $xpath->query('.//*[contains(@class,"' . substr($sel,1) . '")]', $parent);
-                        if ($nodes->length > 0) { $country = clean_text($nodes->item(0)->textContent); break 2; }
-                    }
-                }
-            }
-            $parent = $parent->parentNode;
-        }
-
-        // Alternatif: link metninden çıkar (ör. "+46769436266 Sweden")
-        if ($country === 'unknown') {
-            $txt = clean_text($a->textContent);
-            if (preg_match('/([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s*$/', $txt, $cm)) {
-                $country = $cm[1];
-            }
-        }
-
-        $countries[] = [
+        $nums[] = [
+            'phone'   => $num,
             'country' => $country,
-            'phone'   => $phone,
-            'display' => '+' . $phone,
-            'url'     => BASE_URL . '/receive-free-sms/' . $phone,
+            'display' => '+' . $num,
+            'url'     => (strpos($href, 'http') === 0) ? $href : BASE_URL . $href,
         ];
     }
 
-    return $countries;
+    return $nums;
 }
 
-// ── SMS MESAJLARI ──
+// ── SMS ──
 function get_sms($phone) {
     $phone = preg_replace('/\D/', '', $phone);
-    $url = BASE_URL . '/receive-free-sms/' . $phone;
-    $html = fetch_url($url, 5);
+    $html = fetch_url(BASE_URL . '/', 5);  // liste için
     if (!$html) return null;
 
+    // Önce doğru URL'yi bul
     $dom = new DOMDocument();
     @$dom->loadHTML('<?xml encoding="UTF-8">' . $html);
     $xpath = new DOMXPath($dom);
 
+    $page_url = null;
+    foreach ($xpath->query('//a[@href]') as $a) {
+        $href = $a->getAttribute('href');
+        if (strpos($href, $phone) !== false && preg_match('#-\d+$#', $href) === 0) {
+            $page_url = (strpos($href, 'http') === 0) ? $href : BASE_URL . $href;
+            break;
+        }
+        if (strpos($href, $phone) !== false) {
+            $page_url = (strpos($href, 'http') === 0) ? $href : BASE_URL . $href;
+        }
+    }
+
+    if (!$page_url) {
+        $page_url = BASE_URL . '/' . $phone . '-sms';
+    }
+
+    $sms_html = fetch_url($page_url, 5);
+    if (!$sms_html) return null;
+
+    $sdom = new DOMDocument();
+    @$sdom->loadHTML('<?xml encoding="UTF-8">' . $sms_html);
+    $sxpath = new DOMXPath($sdom);
+
     $messages = [];
 
-    // Yapı: <h3>GONDEREN</h3> <time>5 minutes ago</time> <p>mesaj</p>
-    // Ya da benzer div yapısı. H3 + P arayacağız.
-    $h3s = $xpath->query('//h3 | //h4');
-    foreach ($h3s as $h) {
-        $sender = clean_text($h->textContent);
-        if (!$sender || strlen($sender) > 60) continue;
+    // Tablo satırları
+    foreach ($sxpath->query('//tr') as $tr) {
+        $cells = $sxpath->query('.//td', $tr);
+        if ($cells->length < 2) continue;
+        $parts = [];
+        foreach ($cells as $c) $parts[] = clean_text($c->textContent);
+        if (!$parts[0] || strtolower($parts[0]) === 'from') continue;
+        $messages[] = [
+            'sender' => $parts[0],
+            'text'   => $parts[1] ?? '',
+            'date'   => $parts[2] ?? '',
+            'otp'    => extract_otp($parts[1] ?? ''),
+        ];
+    }
 
-        // Sonraki kardeşlerden time ve mesajı bul
-        $sibling = $h->nextSibling;
-        $date = '';
-        $text = '';
-
-        $depth = 0;
-        while ($sibling && $depth < 6) {
-            if ($sibling->nodeType === XML_ELEMENT_NODE) {
-                $name = strtolower($sibling->nodeName);
-                $c = clean_text($sibling->textContent);
-
-                if (in_array($name, ['time', 'span', 'div']) && preg_match('/\d+\s+(minute|hour|day|year|month|second)/i', $c)) {
-                    if (!$date) $date = $c;
-                } elseif (in_array($name, ['p', 'div']) && strlen($c) > 8 && !$text) {
-                    $text = $c;
-                }
-            }
-            $sibling = $sibling->nextSibling;
-            $depth++;
-        }
-
-        // Eğer sibling yöntemi tutmazsa h3 üst divinden p'leri çek
-        if (!$text) {
-            $parent = $h->parentNode;
-            if ($parent) {
-                $ps = $xpath->query('.//p', $parent);
-                if ($ps->length > 0) {
-                    $text = clean_text($ps->item(0)->textContent);
-                }
-                $ts = $xpath->query('.//time | .//*[contains(@class,"time")]', $parent);
-                if ($ts->length > 0 && !$date) {
-                    $date = clean_text($ts->item(0)->textContent);
-                }
-            }
-        }
-
-        if ($text && strlen($text) > 3) {
+    // Div yapısı
+    if (!$messages) {
+        foreach ($sxpath->query('//div[contains(@class,"message") or contains(@class,"sms")]') as $div) {
+            $txt = clean_text($div->textContent);
+            if (strlen($txt) < 5) continue;
             $messages[] = [
-                'sender' => $sender,
-                'text'   => $text,
-                'date'   => $date,
-                'otp'    => extract_otp($text),
+                'sender' => '',
+                'text'   => $txt,
+                'date'   => '',
+                'otp'    => extract_otp($txt),
             ];
         }
     }
@@ -201,22 +169,22 @@ function get_sms($phone) {
 }
 
 // ── ROUTE ──
-$action = $_GET['action'] ?? 'countries';
+$action = $_GET['action'] ?? 'numbers';
 
 switch ($action) {
-
-    case 'countries':
-        $list = get_countries();
-        json_out(['success' => true, 'count' => count($list), 'data' => $list]);
-        break;
-
     case 'numbers':
-        $country = strtolower($_GET['country'] ?? '');
-        $list = get_countries();
-        $filtered = $country
-            ? array_values(array_filter($list, fn($x) => strtolower($x['country']) === $country))
-            : $list;
-        json_out(['success' => true, 'country' => $country ?: 'all', 'count' => count($filtered), 'data' => $filtered]);
+    case 'countries':
+        $list = get_numbers();
+        $gruplar = [];
+        foreach ($list as $n) {
+            $gruplar[$n['country']][] = $n;
+        }
+        json_out([
+            'success'   => true,
+            'count'     => count($list),
+            'countries' => array_keys($gruplar),
+            'data'      => $list,
+        ]);
         break;
 
     case 'sms':
@@ -233,11 +201,8 @@ switch ($action) {
         if (!$phone) err("phone gerekli");
         $msj = get_sms($phone);
         if ($msj === null) err("numara sayfası alınamadı", 502);
-
-        // OTP olanları öne al
         usort($msj, fn($a, $b) => ($b['otp'] ? 1 : 0) - ($a['otp'] ? 1 : 0));
         $msj = array_slice($msj, 0, $limit);
-
         json_out(['success' => true, 'phone' => $phone, 'count' => count($msj), 'data' => $msj]);
         break;
 
