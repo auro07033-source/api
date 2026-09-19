@@ -1,7 +1,14 @@
 <?php
 /**
- * 📡 Receive-SMS-Online.info OTP API — @cmrbaskani
- * Dosya: smsotp.php
+ * 📡 NumberPanel OTP API — @cmrbaskani
+ * Dosya: numberpanel.php
+ * Sunucu: https://ucretsizservicetr.onrender.com/numberpanel.php
+ *
+ * Endpointler:
+ *   GET numberpanel.php?action=otp&count=200
+ *   GET numberpanel.php?action=lifetime
+ *   GET numberpanel.php?action=search&q=whatsapp
+ *   GET numberpanel.php?action=parse&count=50
  */
 
 header("Content-Type: application/json; charset=utf-8");
@@ -11,11 +18,12 @@ header("Access-Control-Allow-Headers: Content-Type");
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 
-define('BASE_URL', 'https://receive-sms-online.info');
-define('UA', 'Mozilla/5.0 (Android 15; Mobile; rv:155.0) Gecko/155.0 Firefox/155.0');
-define('CACHE_DIR', sys_get_temp_dir() . '/smsotp_cache');
-define('CACHE_TTL', 5);
+define('NP_BASE', 'https://numberpanel.tech/api');
+define('UA', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36');
+define('CACHE_DIR', sys_get_temp_dir() . '/np_cache');
+define('CACHE_TTL', 10);
 
+// ─── YARDIMCI ───
 function json_out($data, $code = 200) {
     http_response_code($code);
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
@@ -28,201 +36,182 @@ function cache_path($key) {
     return CACHE_DIR . '/' . md5($key) . '.cache';
 }
 
-function fetch_url($url, $ttl = CACHE_TTL) {
+function fetch_json($url, $ttl = CACHE_TTL) {
     $cf = cache_path($url);
     if (file_exists($cf) && (time() - filemtime($cf)) < $ttl) {
-        return file_get_contents($cf);
+        return json_decode(file_get_contents($cf), true);
     }
 
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS      => 5,
         CURLOPT_TIMEOUT        => 30,
         CURLOPT_CONNECTTIMEOUT => 10,
         CURLOPT_ENCODING       => '',
         CURLOPT_SSL_VERIFYPEER => false,
         CURLOPT_HTTPHEADER     => [
+            'Accept: application/json, text/plain, */*',
             'User-Agent: ' . UA,
-            'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language: en-US,en;q=0.9',
-            'Referer: ' . BASE_URL . '/',
+            'Referer: https://numberpanel.tech/',
         ],
     ]);
+
     $body = curl_exec($ch);
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
     if ($code !== 200 || !$body) return null;
-    @file_put_contents($cf, $body);
-    return $body;
-}
 
-function clean_text($s) {
-    return trim(preg_replace('/\s+/u', ' ', $s ?? ''));
+    $json = json_decode($body, true);
+    if ($json === null) return null;
+
+    @file_put_contents($cf, $body);
+    return $json;
 }
 
 function extract_otp($text) {
-    if (preg_match('/(?:code|otp|verification|pin)[\s:]*([0-9]{4,8})/i', $text, $m)) return $m[1];
-    if (preg_match('/\b([0-9]{4,8})\b/', $text, $m)) return $m[1];
+    // 4-8 haneli OTP kodu
+    if (preg_match('/(?:code|password|pin|otp|doğrulama)[^\d]{0,20}(\d{4,8})/i', $text, $m)) return $m[1];
+    if (preg_match('/\b(\d{4,8})\b/', $text, $m)) return $m[1];
+    // WhatsApp formatı: 383-039
+    if (preg_match('/\b(\d{3})[-\s](\d{3})\b/', $text, $m)) return $m[1] . $m[2];
     return null;
 }
 
-// ── NUMARALAR (ana sayfa) ──
-function get_numbers() {
-    $html = fetch_url(BASE_URL . '/', 60);
-    if (!$html) return [];
-
-    $dom = new DOMDocument();
-    @$dom->loadHTML('<?xml encoding="UTF-8">' . $html);
-    $xpath = new DOMXPath($dom);
-
-    $nums = [];
-    $seen = [];
-
-    // /<numara>-<ulke> formatındaki linkler
-    foreach ($xpath->query('//a[@href]') as $a) {
-        $href = $a->getAttribute('href');
-        if (!preg_match('#/(\+?\d{7,15})-([A-Za-z]+)$#', $href, $m)) continue;
-        $num = ltrim($m[1], '+');
-        $country = $m[2];
-        if (isset($seen[$num])) continue;
-        $seen[$num] = true;
-
-        $nums[] = [
-            'phone'   => $num,
-            'country' => $country,
-            'display' => '+' . $num,
-            'url'     => (strpos($href, 'http') === 0) ? $href : BASE_URL . $href,
+function normalize($raw) {
+    /**
+     * Format: [servis, numara, mesaj, tarih, ülke]
+     */
+    $out = [];
+    foreach ($raw as $row) {
+        if (!is_array($row) || count($row) < 4) continue;
+        $text = $row[2] ?? '';
+        $out[] = [
+            'service' => trim($row[0] ?? ''),
+            'phone'   => trim($row[1] ?? ''),
+            'message' => trim($text),
+            'date'    => trim($row[3] ?? ''),
+            'country' => trim($row[4] ?? ''),
+            'otp'     => extract_otp($text),
         ];
     }
-
-    return $nums;
+    return $out;
 }
 
-// ── SMS ──
-function get_sms($phone) {
-    $phone = preg_replace('/\D/', '', $phone);
-    $html = fetch_url(BASE_URL . '/', 5);  // liste için
-    if (!$html) return null;
-
-    // Önce doğru URL'yi bul
-    $dom = new DOMDocument();
-    @$dom->loadHTML('<?xml encoding="UTF-8">' . $html);
-    $xpath = new DOMXPath($dom);
-
-    $page_url = null;
-    foreach ($xpath->query('//a[@href]') as $a) {
-        $href = $a->getAttribute('href');
-        if (strpos($href, $phone) !== false && preg_match('#-\d+$#', $href) === 0) {
-            $page_url = (strpos($href, 'http') === 0) ? $href : BASE_URL . $href;
-            break;
-        }
-        if (strpos($href, $phone) !== false) {
-            $page_url = (strpos($href, 'http') === 0) ? $href : BASE_URL . $href;
-        }
-    }
-
-    if (!$page_url) {
-        $page_url = BASE_URL . '/' . $phone . '-sms';
-    }
-
-    $sms_html = fetch_url($page_url, 5);
-    if (!$sms_html) return null;
-
-    $sdom = new DOMDocument();
-    @$sdom->loadHTML('<?xml encoding="UTF-8">' . $sms_html);
-    $sxpath = new DOMXPath($sdom);
-
-    $messages = [];
-
-    // Tablo satırları
-    foreach ($sxpath->query('//tr') as $tr) {
-        $cells = $sxpath->query('.//td', $tr);
-        if ($cells->length < 2) continue;
-        $parts = [];
-        foreach ($cells as $c) $parts[] = clean_text($c->textContent);
-        if (!$parts[0] || strtolower($parts[0]) === 'from') continue;
-        $messages[] = [
-            'sender' => $parts[0],
-            'text'   => $parts[1] ?? '',
-            'date'   => $parts[2] ?? '',
-            'otp'    => extract_otp($parts[1] ?? ''),
-        ];
-    }
-
-    // Div yapısı
-    if (!$messages) {
-        foreach ($sxpath->query('//div[contains(@class,"message") or contains(@class,"sms")]') as $div) {
-            $txt = clean_text($div->textContent);
-            if (strlen($txt) < 5) continue;
-            $messages[] = [
-                'sender' => '',
-                'text'   => $txt,
-                'date'   => '',
-                'otp'    => extract_otp($txt),
-            ];
-        }
-    }
-
-    return $messages;
-}
-case 'debug':
-    $html = fetch_url(BASE_URL . '/receive-free-sms', 0);
-    json_out([
-        'success' => true,
-        'url' => BASE_URL . '/receive-free-sms',
-        'length' => strlen($html ?: ''),
-        'sample' => substr($html ?: '', 0, 5000),
-        'links' => array_slice(
-            array_map(
-                fn($m) => $m[0],
-                preg_match_all('#href="([^"]+)"#', $html ?: '', $matches) ? $matches : []
-            ),
-            0, 50
-        )
-    ]);
-    break;
-// ── ROUTE ──
-$action = $_GET['action'] ?? 'numbers';
+// ─── ROUTE ───
+$action = $_GET['action'] ?? 'otp';
 
 switch ($action) {
-    case 'numbers':
-    case 'countries':
-        $list = get_numbers();
-        $gruplar = [];
-        foreach ($list as $n) {
-            $gruplar[$n['country']][] = $n;
-        }
+
+    // GET numberpanel.php?action=otp&count=200
+    case 'otp':
+        $count = max(1, min(1000, (int)($_GET['count'] ?? 200)));
+        $url = NP_BASE . '/otp?count=' . $count;
+        $data = fetch_json($url);
+        if ($data === null) err("numberpanel API yanıt vermedi", 502);
+
         json_out([
-            'success'   => true,
-            'count'     => count($list),
-            'countries' => array_keys($gruplar),
-            'data'      => $list,
+            'success' => true,
+            'count'   => count($data),
+            'raw'     => $_GET['raw'] ?? null,
+            'data'    => normalize($data),
         ]);
         break;
 
-    case 'sms':
-        $phone = preg_replace('/\D/', '', $_GET['phone'] ?? '');
-        if (!$phone) err("phone gerekli");
-        $msj = get_sms($phone);
-        if ($msj === null) err("numara sayfası alınamadı", 502);
-        json_out(['success' => true, 'phone' => $phone, 'count' => count($msj), 'data' => $msj]);
+    // GET numberpanel.php?action=lifetime
+    case 'lifetime':
+        $url = NP_BASE . '/lifetime';
+        $data = fetch_json($url, 30);
+        if ($data === null) err("numberpanel API yanıt vermedi", 502);
+
+        json_out([
+            'success' => true,
+            'count'   => count($data),
+            'data'    => normalize($data),
+        ]);
         break;
 
-    case 'otp':
-        $phone = preg_replace('/\D/', '', $_GET['phone'] ?? '');
-        $limit = min(20, max(1, (int)($_GET['limit'] ?? 5)));
-        if (!$phone) err("phone gerekli");
-        $msj = get_sms($phone);
-        if ($msj === null) err("numara sayfası alınamadı", 502);
-        usort($msj, fn($a, $b) => ($b['otp'] ? 1 : 0) - ($a['otp'] ? 1 : 0));
-        $msj = array_slice($msj, 0, $limit);
-        json_out(['success' => true, 'phone' => $phone, 'count' => count($msj), 'data' => $msj]);
+    // GET numberpanel.php?action=search&q=whatsapp
+    case 'search':
+        $q = trim($_GET['q'] ?? '');
+        if ($q === '') err("q parametresi gerekli");
+        $limit = min(200, max(1, (int)($_GET['limit'] ?? 50)));
+
+        $url = NP_BASE . '/otp?count=500';
+        $data = fetch_json($url);
+        if ($data === null) err("numberpanel API yanıt vermedi", 502);
+
+        $q_lower = mb_strtolower($q, 'UTF-8');
+        $sonuc = [];
+        foreach (normalize($data) as $m) {
+            if (
+                mb_stripos($m['service'], $q_lower, 0, 'UTF-8') !== false ||
+                mb_stripos($m['message'], $q_lower, 0, 'UTF-8') !== false
+            ) {
+                $sonuc[] = $m;
+                if (count($sonuc) >= $limit) break;
+            }
+        }
+
+        json_out([
+            'success' => true,
+            'query'   => $q,
+            'count'   => count($sonuc),
+            'data'    => $sonuc,
+        ]);
+        break;
+
+    // GET numberpanel.php?action=otp_only&count=100
+    case 'otp_only':
+        $count = max(1, min(1000, (int)($_GET['count'] ?? 100)));
+        $url = NP_BASE . '/otp?count=' . $count;
+        $data = fetch_json($url);
+        if ($data === null) err("numberpanel API yanıt vermedi", 502);
+
+        $sonuc = [];
+        foreach (normalize($data) as $m) {
+            if ($m['otp']) $sonuc[] = $m;
+        }
+
+        json_out([
+            'success' => true,
+            'count'   => count($sonuc),
+            'data'    => $sonuc,
+        ]);
+        break;
+
+    // GET numberpanel.php?action=services
+    case 'services':
+        $url = NP_BASE . '/otp?count=500';
+        $data = fetch_json($url);
+        if ($data === null) err("numberpanel API yanıt vermedi", 502);
+
+        $sayac = [];
+        foreach (normalize($data) as $m) {
+            $s = $m['service'] ?: 'Bilinmeyen';
+            $sayac[$s] = ($sayac[$s] ?? 0) + 1;
+        }
+        arsort($sayac);
+
+        $out = [];
+        foreach ($sayac as $s => $c) $out[] = ['service' => $s, 'count' => $c];
+
+        json_out([
+            'success' => true,
+            'count'   => count($out),
+            'data'    => $out,
+        ]);
         break;
 
     case 'health':
-        json_out(['success' => true, 'status' => 'ok', 'time' => date('c'), 'base' => BASE_URL]);
+        json_out([
+            'success' => true,
+            'status'  => 'ok',
+            'time'    => date('c'),
+            'api'     => NP_BASE,
+        ]);
         break;
 
     default:
