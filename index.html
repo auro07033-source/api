@@ -400,6 +400,7 @@
     display: flex; justify-content: space-between; align-items: center;
     font-size: .68rem; color: var(--text-dim);
     margin-bottom: .4rem; gap: .5rem;
+    flex-wrap: wrap;
   }
   .sms-head .sender { color: var(--primary); font-weight: 700; }
   .sms-head .country { color: var(--warning); font-size: .65rem; }
@@ -424,20 +425,6 @@
     padding: .2rem .6rem;
     border-radius: 6px;
     letter-spacing: .12em;
-  }
-
-  .service-chip {
-    display: inline-flex;
-    align-items: center;
-    padding: .2rem .55rem;
-    border-radius: 4px;
-    background: rgba(99,102,241,.12);
-    border: 1px solid rgba(99,102,241,.3);
-    color: var(--primary);
-    font-size: .65rem;
-    font-weight: 700;
-    font-family: 'JetBrains Mono', monospace;
-    margin: 2px;
   }
 
   .footer {
@@ -511,11 +498,11 @@
         <div class="api-desc">Binance kullanıcı adı veya ID ile kayıt sorgular. Numerik girişlerde ID, metin girişlerinde username parametreleri otomatik denenir.</div>
 
         <div class="input-group">
-          <input type="text" id="binanceQuery" placeholder="username veya id" value="elonmusk">
+          <input type="text" id="binanceQuery" placeholder="username veya id" value="437590933">
         </div>
 
         <div class="api-url" id="binanceUrlBox">
-          <span class="url-text" id="binanceUrl">https://ucretsizservicetr.onrender.com/binancesrg.php?user=elonmusk</span>
+          <span class="url-text" id="binanceUrl">https://ucretsizservicetr.onrender.com/binancesrg.php?id=437590933</span>
           <button class="copy-btn" onclick="copyUrl('binanceUrl')">kopyala</button>
         </div>
 
@@ -558,7 +545,7 @@
         </div>
 
         <div class="api-url" id="npUrlBox">
-          <span class="url-text" id="npUrl">https://ucretsizservicetr.onrender.com/numberpanel.php?action=otp&count=50</span>
+          <span class="url-text" id="npUrl">https://ucretsizservicetr.onrender.com/smsotp.php?action=otp&count=50</span>
           <button class="copy-btn" onclick="copyUrl('npUrl')">kopyala</button>
         </div>
 
@@ -670,7 +657,7 @@
   });
 
   // ═════════ NUMBERPANEL OTP ═════════
-  const NP_API = "https://ucretsizservicetr.onrender.com/numberpanel.php";
+  const NP_API = "https://ucretsizservicetr.onrender.com/smsotp.php";
   const NP_ACTION = document.getElementById('npAction');
   const NP_SEARCH = document.getElementById('npSearch');
   const NP_COUNT  = document.getElementById('npCountInput');
@@ -683,7 +670,6 @@
     const btn = document.getElementById('npBtn');
     const res = document.getElementById('result-np');
 
-    // Arama varsa search endpoint'i, yoksa seçilen action
     let url;
     if (q) {
       url = `${NP_API}?action=search&q=${encodeURIComponent(q)}&limit=${count}`;
@@ -711,7 +697,6 @@
         return;
       }
 
-      // Servis istatistikleri görünümü
       if (action === 'services' && !q) {
         let html = `<div class="result-badge ok">✓ ${d.count} servis</div>`;
         d.data.forEach(s => {
@@ -727,10 +712,9 @@
         return;
       }
 
-      // Normal OTP listesi
       const list = d.data || [];
       if (!list.length) {
-        res.innerHTML = `<div class="result-badge err">✗ Kayıt yok</div>Filtre boş olabilir veya API şu an boş döndü.`;
+        res.innerHTML = `<div class="result-badge err">✗ Kayıt yok</div>`;
         return;
       }
 
@@ -765,7 +749,6 @@
     }
   }
 
-  // Enter ile ara
   NP_SEARCH.addEventListener('keypress', e => {
     if (e.key === 'Enter') testNP();
   });
