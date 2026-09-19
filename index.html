@@ -261,10 +261,18 @@
     -webkit-appearance: none;
     appearance: none;
   }
+  .input-group select {
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right .9rem center;
+    padding-right: 2.2rem;
+  }
   .input-group input:focus, .input-group textarea:focus, .input-group select:focus {
     border-color: var(--primary);
     box-shadow: 0 0 0 3px rgba(99,102,241,.15);
   }
+  .input-group select option { background: var(--card-solid); color: var(--text); }
 
   .api-url {
     background: var(--bg);
@@ -376,36 +384,40 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  .ff-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: .6rem;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: .8rem;
-  }
-  .ff-row {
+  .sms-item {
     background: var(--card-solid);
     border: 1px solid var(--border);
-    border-radius: .55rem;
-    padding: .65rem .85rem;
+    border-radius: .6rem;
+    padding: .75rem .9rem;
+    margin-bottom: .55rem;
+    white-space: normal;
   }
-  .ff-row .k {
-    font-size: .65rem;
-    color: var(--text-mute);
-    text-transform: uppercase;
-    letter-spacing: .06em;
-    margin-bottom: .2rem;
-    display: block;
+  .sms-item.has-otp {
+    border-color: rgba(16,185,129,.5);
+    background: rgba(16,185,129,.06);
   }
-  .ff-row .v {
-    font-size: .9rem;
-    font-weight: 700;
-    color: var(--text);
-    word-break: break-all;
+  .sms-head {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: .68rem; color: var(--text-dim);
+    margin-bottom: .4rem; gap: .5rem;
   }
-  .ff-row.full { grid-column: 1 / -1; }
-  .ff-row.highlight { border-color: rgba(16,185,129,.5); background: rgba(16,185,129,.08); }
-  .ff-row.highlight .v { color: var(--success); }
+  .sms-head .sender { color: var(--primary); font-weight: 700; }
+  .sms-body {
+    font-size: .78rem; color: var(--text); line-height: 1.5;
+    word-break: break-word; font-family: inherit;
+  }
+  .otp-tag {
+    display: inline-flex; align-items: center; gap: .35rem;
+    margin-top: .5rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 800; font-size: .82rem;
+    color: var(--success);
+    background: rgba(16,185,129,.12);
+    border: 1px solid rgba(16,185,129,.4);
+    padding: .2rem .6rem;
+    border-radius: 6px;
+    letter-spacing: .12em;
+  }
 
   .footer {
     text-align: center;
@@ -446,7 +458,6 @@
     .header { padding: 1.1rem 1.2rem; }
     .logo-text h1 { font-size: 1.2rem; }
     .logo-icon { width: 44px; height: 44px; font-size: 22px; }
-    .ff-grid { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -497,32 +508,40 @@
     </div>
   </div>
 
-  <!-- FREE FIRE -->
+  <!-- SMS OTP -->
   <div class="category">
-    <div class="category-title">🎮 Free Fire Sorgulama <span class="count">1 endpoint</span></div>
+    <div class="category-title">📡 SMS / OTP Sorgulama <span class="count" id="otpCount">-</span></div>
     <div class="grid">
       <div class="api-card">
         <div class="api-header">
-          <span class="api-name">🎮 FF Profil Lookup</span>
+          <span class="api-name">📡 SMS-Online OTP Sorgu</span>
           <span class="api-method">GET</span>
         </div>
-        <div class="api-desc">Free Fire oyuncu ID'si ile nickname, seviye, rütbe, beğeni, bölge bilgilerini getirir.</div>
+        <div class="api-desc">sms-online.co public numaralarından SMS ve OTP kodları. Ülke seç → numara seç → SMS listesi. OTP'li mesajlar otomatik vurgulanır.</div>
 
         <div class="input-group">
-          <input type="text" id="ffId" placeholder="Free Fire Player ID (ör: 403676323)" value="403676323">
+          <select id="otpCountry"><option value="">ülke yükleniyor...</option></select>
         </div>
 
-        <div class="api-url" id="ffUrlBox">
-          <span class="url-text" id="ffUrl">https://ucretsizservicetr.onrender.com/ffprofile.php?action=profile&id=403676323</span>
-          <button class="copy-btn" onclick="copyUrl('ffUrl')">kopyala</button>
+        <div class="input-group">
+          <select id="otpPhone"><option value="">önce ülke seç</option></select>
+        </div>
+
+        <div class="input-group">
+          <input type="text" id="otpManual" placeholder="veya manuel numara (ör. 48728706124)" autocomplete="off">
+        </div>
+
+        <div class="api-url" id="otpUrlBox">
+          <span class="url-text" id="otpUrl">https://ucretsizservicetr.onrender.com/smsotp.php?action=countries</span>
+          <button class="copy-btn" onclick="copyUrl('otpUrl')">kopyala</button>
         </div>
 
         <div class="button-group">
-          <button class="try-btn" id="ffBtn" onclick="testFF()">🎮 Sorgula</button>
-          <button class="go-btn" onclick="goToUrl('ffUrl')">🌐 Aç</button>
+          <button class="try-btn" id="otpBtn" onclick="otpFetch()">📡 SMS Getir</button>
+          <button class="go-btn" onclick="goToUrl('otpUrl')">🌐 Aç</button>
         </div>
 
-        <div id="result-ff" class="result-area"></div>
+        <div id="result-otp" class="result-area"></div>
       </div>
     </div>
   </div>
@@ -624,55 +643,142 @@
     if (e.key === 'Enter') testBinance();
   });
 
-  // ═════════ FREE FIRE ═════════
-  async function testFF() {
-    const id = document.getElementById('ffId').value.trim().replace(/\D/g, '');
-    if (!id) { showToast('Player ID gir'); return; }
+  // ═════════ SMS OTP ═════════
+  const OTP_API = "https://ucretsizservicetr.onrender.com/smsotp.php";
+  const OTP_COUNTRY = document.getElementById('otpCountry');
+  const OTP_PHONE   = document.getElementById('otpPhone');
+  const OTP_MANUAL  = document.getElementById('otpManual');
 
-    const btn = document.getElementById('ffBtn');
-    const res = document.getElementById('result-ff');
+  async function otpCall(params){
+    const u = new URL(OTP_API);
+    Object.entries(params).forEach(([k,v]) => u.searchParams.set(k, v));
+    document.getElementById('otpUrl').textContent = u.toString();
 
-    const url = `https://ucretsizservicetr.onrender.com/ffprofile.php?action=profile&id=${id}`;
-    document.getElementById('ffUrl').textContent = url;
+    const r = await fetch(u.toString());
+    if (!r.ok) throw new Error("HTTP " + r.status);
 
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span> Sorgulanıyor...';
-    res.classList.add('active');
-    res.innerHTML = '<span class="spinner"></span> Free Fire API yanıtı bekleniyor...';
+    const d = await r.json();
+    if (!d.success) throw new Error(d.error || "api hatası");
+    return d;
+  }
 
+  async function otpLoadCountries(){
     try {
-      const r = await fetch(url);
-      const d = await r.json();
+      const d = await otpCall({action: "numbers"});
+      OTP_COUNTRY.innerHTML = "";
 
-      if (d.success && d.data) {
-        const p = d.data;
-        res.innerHTML = `
-          <div class="result-badge ok">✓ Profil bulundu</div>
-          <div class="ff-grid">
-            <div class="ff-row"><span class="k">Nickname</span><span class="v">${escHtml(p.nickname || '-')}</span></div>
-            <div class="ff-row"><span class="k">Player ID</span><span class="v">${escHtml(p.player_id || '-')}</span></div>
-            <div class="ff-row"><span class="k">Bölge</span><span class="v">${escHtml(p.region || '-')}</span></div>
-            <div class="ff-row"><span class="k">Seviye</span><span class="v">${escHtml(p.level || '-')}</span></div>
-            <div class="ff-row highlight"><span class="k">Rütbe</span><span class="v">${escHtml(p.rank || '-')}</span></div>
-            <div class="ff-row highlight"><span class="k">Rank Puanı</span><span class="v">${escHtml(p.rank_points || '-')}</span></div>
-            <div class="ff-row"><span class="k">Beğeni</span><span class="v">${escHtml(p.likes || '-')}</span></div>
-            <div class="ff-row"><span class="k">Güncelleme</span><span class="v" style="font-size:.7rem">${escHtml(p.updated_at || '-')}</span></div>
-            <div class="ff-row full"><span class="k">Profil URL</span><span class="v"><a href="${escHtml(p.profile_url || '#')}" target="_blank" style="color:var(--primary);text-decoration:none;">${escHtml(p.profile_url || '-')}</a></span></div>
-          </div>`;
-      } else {
-        res.innerHTML = `<div class="result-badge err">✗ ${escHtml(d.error || 'bulunamadı')}</div>`;
+      const gruplar = {};
+      (d.data || []).forEach(n => {
+        const c = n.country || "unknown";
+        if (!gruplar[c]) gruplar[c] = [];
+        gruplar[c].push(n);
+      });
+
+      const sirali = Object.keys(gruplar).sort();
+      if (!sirali.length) {
+        OTP_COUNTRY.innerHTML = '<option value="">ülke yok</option>';
+        return;
       }
+
+      sirali.forEach(c => {
+        const o = document.createElement("option");
+        o.value = c;
+        o.textContent = c + "  ·  " + gruplar[c].length + " numara";
+        OTP_COUNTRY.appendChild(o);
+      });
+
+      document.getElementById("otpCount").textContent = d.count + " numara";
+      otpLoadNumbers();
     } catch (e) {
-      res.innerHTML = `<div class="result-badge err">✗ Hata</div>${escHtml(e.message)}`;
-    } finally {
-      btn.disabled = false;
-      btn.textContent = '🎮 Sorgula';
+      OTP_COUNTRY.innerHTML = '<option value="">yüklenemedi: ' + escHtml(e.message) + '</option>';
     }
   }
 
-  document.getElementById('ffId').addEventListener('keypress', e => {
-    if (e.key === 'Enter') testFF();
-  });
+  async function otpLoadNumbers(){
+    const country = OTP_COUNTRY.value;
+    if (!country) {
+      OTP_PHONE.innerHTML = '<option value="">önce ülke seç</option>';
+      return;
+    }
+    OTP_PHONE.innerHTML = '<option value="">yükleniyor...</option>';
+
+    try {
+      const d = await otpCall({action: "numbers"});
+      OTP_PHONE.innerHTML = "";
+      const filtreli = (d.data || []).filter(n => n.country === country);
+
+      if (!filtreli.length) {
+        OTP_PHONE.innerHTML = '<option value="">numara yok (manuel gir)</option>';
+        return;
+      }
+
+      filtreli.forEach(n => {
+        const o = document.createElement("option");
+        o.value = n.phone;
+        o.textContent = (n.display || ("+" + n.phone));
+        OTP_PHONE.appendChild(o);
+      });
+    } catch (e) {
+      OTP_PHONE.innerHTML = '<option value="">hata: ' + escHtml(e.message) + '</option>';
+    }
+  }
+
+  async function otpFetch(){
+    const btn = document.getElementById('otpBtn');
+    const res = document.getElementById('result-otp');
+
+    let phone = (OTP_MANUAL.value || "").replace(/\D/g, "");
+    if (!phone) phone = OTP_PHONE.value;
+
+    if (!phone) {
+      res.classList.add("active");
+      res.innerHTML = '<div class="result-badge err">✗ ülke ve numara seç</div>';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> çekiliyor...';
+    res.classList.add("active");
+    res.innerHTML = '<span class="spinner"></span> SMS\'ler alınıyor...';
+
+    try {
+      const d = await otpCall({action: "sms", phone});
+      const list = d.data || [];
+
+      if (!list.length) {
+        res.innerHTML = `<div class="result-badge err">✗ SMS yok</div>+${escHtml(phone)} numarasına henüz mesaj gelmemiş.`;
+        return;
+      }
+
+      list.sort((a,b) => (b.otp ? 1 : 0) - (a.otp ? 1 : 0));
+
+      let html = `<div class="result-badge ok">✓ ${list.length} SMS bulundu</div>`;
+      list.forEach(m => {
+        const otpTag = m.otp
+          ? `<div class="otp-tag">OTP · ${escHtml(m.otp)}</div>`
+          : "";
+        html += `
+          <div class="sms-item${m.otp ? ' has-otp' : ''}">
+            <div class="sms-head">
+              <span class="sender">${escHtml(m.sender || "-")}</span>
+              <span>${escHtml(m.date || "")}</span>
+            </div>
+            <div class="sms-body">${escHtml(m.text || "")}</div>
+            ${otpTag}
+          </div>`;
+      });
+      res.innerHTML = html;
+    } catch (e) {
+      res.innerHTML = `<div class="result-badge err">✗ hata</div>${escHtml(e.message)}`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "📡 SMS Getir";
+    }
+  }
+
+  OTP_COUNTRY.addEventListener('change', otpLoadNumbers);
+  OTP_MANUAL.addEventListener('keydown', e => { if(e.key === "Enter") otpFetch(); });
+  otpLoadCountries();
 </script>
 
 </body>
