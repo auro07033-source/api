@@ -261,6 +261,12 @@
     -webkit-appearance: none;
     appearance: none;
   }
+  .input-group textarea {
+    min-height: 70px;
+    resize: vertical;
+    font-family: 'Inter', sans-serif;
+    line-height: 1.4;
+  }
   .input-group select {
     cursor: pointer;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
@@ -427,6 +433,15 @@
     letter-spacing: .12em;
   }
 
+  .gpt-answer {
+    font-family: 'Inter', sans-serif;
+    font-size: .92rem;
+    line-height: 1.75;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
   .footer {
     text-align: center;
     margin-top: 3rem;
@@ -486,6 +501,36 @@
     </div>
   </div>
 
+  <!-- GPT / GEMINI CHAT -->
+  <div class="category">
+    <div class="category-title">🤖 AI Chat <span class="count">1 endpoint</span></div>
+    <div class="grid">
+      <div class="api-card">
+        <div class="api-header">
+          <span class="api-name">🤖 GPT Chat</span>
+          <span class="api-method">GET</span>
+        </div>
+        <div class="api-desc">Gemini 2.0 Flash ile sohbet. Sorunu yaz, AI yanıtlasın. 60 saniye cache'li.</div>
+
+        <div class="input-group">
+          <textarea id="gptQuery" placeholder="Sorunu yaz... (Enter = gönder, Shift+Enter = yeni satır)" rows="2"></textarea>
+        </div>
+
+        <div class="api-url" id="gptUrlBox">
+          <span class="url-text" id="gptUrl">https://ucretsizservicetr.onrender.com/gpt.php?q=merhaba</span>
+          <button class="copy-btn" onclick="copyUrl('gptUrl')">kopyala</button>
+        </div>
+
+        <div class="button-group">
+          <button class="try-btn" id="gptBtn" onclick="testGPT()">🤖 Sor</button>
+          <button class="go-btn" onclick="goToUrl('gptUrl')">🌐 Aç</button>
+        </div>
+
+        <div id="result-gpt" class="result-area"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- BINANCE -->
   <div class="category">
     <div class="category-title">💹 Binance Sorgulama <span class="count">1 endpoint</span></div>
@@ -522,7 +567,7 @@
     <div class="grid">
       <div class="api-card">
         <div class="api-header">
-          <span class="api-name">📡 Sms Otp </span>
+          <span class="api-name">📡 Sms Otp</span>
           <span class="api-method">GET</span>
         </div>
         <div class="api-desc">OTP ve SMS kodlarını çeker. Servise göre filtrele, otomatik OTP çıkarımı (Facebook, WhatsApp, Google, Amazon, vs.).</div>
@@ -560,7 +605,7 @@
   </div>
 
   <div class="footer">
-    <p>© Tüm Hakları Saklıdır ©<span class="brand"></span></p>
+    <p>© Tüm Hakları Saklıdır ©</p>
   </div>
 </div>
 
@@ -604,6 +649,49 @@
   function escHtml(s){
     return String(s||"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   }
+
+  // ═════════ GPT / GEMINI ═════════
+  async function testGPT() {
+    const q = document.getElementById('gptQuery').value.trim();
+    if (!q) { showToast('Soru gir'); return; }
+
+    const btn = document.getElementById('gptBtn');
+    const res = document.getElementById('result-gpt');
+    const url = `https://ucretsizservicetr.onrender.com/gpt.php?q=${encodeURIComponent(q)}`;
+
+    document.getElementById('gptUrl').textContent = url;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> düşünüyor...';
+    res.classList.add('active');
+    res.innerHTML = '<span class="spinner"></span> AI yanıtlıyor...';
+
+    try {
+      const r = await fetch(url);
+      const d = await r.json();
+
+      if (d.success) {
+        const badge = `✓ ${escHtml(d.model || 'gemini')}${d.cached ? ' (cache)' : ''}`;
+        res.innerHTML = `
+          <div class="result-badge ok">${badge}</div>
+          <div class="gpt-answer">${escHtml(d.answer)}</div>`;
+      } else {
+        res.innerHTML = `<div class="result-badge err">✗ ${escHtml(d.error || 'hata')}</div>`;
+      }
+    } catch (e) {
+      res.innerHTML = `<div class="result-badge err">✗ Hata</div>${escHtml(e.message)}`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '🤖 Sor';
+    }
+  }
+
+  // Enter = gönder, Shift+Enter = yeni satır
+  document.getElementById('gptQuery').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      testGPT();
+    }
+  });
 
   // ═════════ BINANCE ═════════
   async function testBinance() {
@@ -656,7 +744,6 @@
     if (e.key === 'Enter') testBinance();
   });
 
-  // ═════════ NUMBERPANEL OTP ═════════
   const NP_API = "https://ucretsizservicetr.onrender.com/smsotp.php";
   const NP_ACTION = document.getElementById('npAction');
   const NP_SEARCH = document.getElementById('npSearch');
