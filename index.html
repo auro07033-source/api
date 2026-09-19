@@ -347,7 +347,7 @@
     word-break: break-word;
     display: none;
     border: 1px solid var(--border);
-    max-height: 380px;
+    max-height: 500px;
     overflow: auto;
     line-height: 1.6;
     white-space: pre-wrap;
@@ -402,9 +402,16 @@
     margin-bottom: .4rem; gap: .5rem;
   }
   .sms-head .sender { color: var(--primary); font-weight: 700; }
+  .sms-head .country { color: var(--warning); font-size: .65rem; }
   .sms-body {
     font-size: .78rem; color: var(--text); line-height: 1.5;
     word-break: break-word; font-family: inherit;
+  }
+  .sms-body .phone {
+    color: var(--primary);
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: .72rem;
   }
   .otp-tag {
     display: inline-flex; align-items: center; gap: .35rem;
@@ -417,6 +424,20 @@
     padding: .2rem .6rem;
     border-radius: 6px;
     letter-spacing: .12em;
+  }
+
+  .service-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: .2rem .55rem;
+    border-radius: 4px;
+    background: rgba(99,102,241,.12);
+    border: 1px solid rgba(99,102,241,.3);
+    color: var(--primary);
+    font-size: .65rem;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    margin: 2px;
   }
 
   .footer {
@@ -508,40 +529,45 @@
     </div>
   </div>
 
-  <!-- SMS OTP -->
+  <!-- NUMBERPANEL OTP -->
   <div class="category">
-    <div class="category-title">📡 SMS / OTP Sorgulama <span class="count" id="otpCount">-</span></div>
+    <div class="category-title">📡 OTP / SMS Sorgulama <span class="count" id="npCount">5 endpoint</span></div>
     <div class="grid">
       <div class="api-card">
         <div class="api-header">
-          <span class="api-name">📡 SMS-Online OTP Sorgu</span>
+          <span class="api-name">📡 NumberPanel OTP Sorgu</span>
           <span class="api-method">GET</span>
         </div>
-        <div class="api-desc">sms-online.co public numaralarından SMS ve OTP kodları. Ülke seç → numara seç → SMS listesi. OTP'li mesajlar otomatik vurgulanır.</div>
+        <div class="api-desc">numberpanel.tech API'sinden güncel OTP ve SMS kodlarını çeker. Servise göre filtrele, otomatik OTP çıkarımı (Facebook, WhatsApp, Google, Amazon, vs.).</div>
 
         <div class="input-group">
-          <select id="otpCountry"><option value="">ülke yükleniyor...</option></select>
+          <select id="npAction">
+            <option value="otp">Son OTP'ler (otp)</option>
+            <option value="otp_only">Sadece OTP'liler (otp_only)</option>
+            <option value="lifetime">Tüm geçmiş (lifetime)</option>
+            <option value="services">Servis istatistikleri (services)</option>
+          </select>
         </div>
 
         <div class="input-group">
-          <select id="otpPhone"><option value="">önce ülke seç</option></select>
+          <input type="text" id="npSearch" placeholder="servis/mesaj ara (ör: whatsapp, facebook)" autocomplete="off">
         </div>
 
         <div class="input-group">
-          <input type="text" id="otpManual" placeholder="veya manuel numara (ör. 48728706124)" autocomplete="off">
+          <input type="number" id="npCountInput" placeholder="adet (varsayılan 50)" value="50" min="1" max="1000">
         </div>
 
-        <div class="api-url" id="otpUrlBox">
-          <span class="url-text" id="otpUrl">https://ucretsizservicetr.onrender.com/smsotp.php?action=countries</span>
-          <button class="copy-btn" onclick="copyUrl('otpUrl')">kopyala</button>
+        <div class="api-url" id="npUrlBox">
+          <span class="url-text" id="npUrl">https://ucretsizservicetr.onrender.com/numberpanel.php?action=otp&count=50</span>
+          <button class="copy-btn" onclick="copyUrl('npUrl')">kopyala</button>
         </div>
 
         <div class="button-group">
-          <button class="try-btn" id="otpBtn" onclick="otpFetch()">📡 SMS Getir</button>
-          <button class="go-btn" onclick="goToUrl('otpUrl')">🌐 Aç</button>
+          <button class="try-btn" id="npBtn" onclick="testNP()">📡 Çek</button>
+          <button class="go-btn" onclick="goToUrl('npUrl')">🌐 Aç</button>
         </div>
 
-        <div id="result-otp" class="result-area"></div>
+        <div id="result-np" class="result-area"></div>
       </div>
     </div>
   </div>
@@ -643,142 +669,106 @@
     if (e.key === 'Enter') testBinance();
   });
 
-  // ═════════ SMS OTP ═════════
-  const OTP_API = "https://ucretsizservicetr.onrender.com/smsotp.php";
-  const OTP_COUNTRY = document.getElementById('otpCountry');
-  const OTP_PHONE   = document.getElementById('otpPhone');
-  const OTP_MANUAL  = document.getElementById('otpManual');
+  // ═════════ NUMBERPANEL OTP ═════════
+  const NP_API = "https://ucretsizservicetr.onrender.com/numberpanel.php";
+  const NP_ACTION = document.getElementById('npAction');
+  const NP_SEARCH = document.getElementById('npSearch');
+  const NP_COUNT  = document.getElementById('npCountInput');
 
-  async function otpCall(params){
-    const u = new URL(OTP_API);
-    Object.entries(params).forEach(([k,v]) => u.searchParams.set(k, v));
-    document.getElementById('otpUrl').textContent = u.toString();
+  async function testNP() {
+    const action = NP_ACTION.value;
+    const q      = NP_SEARCH.value.trim();
+    const count  = Math.max(1, Math.min(1000, parseInt(NP_COUNT.value) || 50));
 
-    const r = await fetch(u.toString());
-    if (!r.ok) throw new Error("HTTP " + r.status);
+    const btn = document.getElementById('npBtn');
+    const res = document.getElementById('result-np');
 
-    const d = await r.json();
-    if (!d.success) throw new Error(d.error || "api hatası");
-    return d;
-  }
-
-  async function otpLoadCountries(){
-    try {
-      const d = await otpCall({action: "numbers"});
-      OTP_COUNTRY.innerHTML = "";
-
-      const gruplar = {};
-      (d.data || []).forEach(n => {
-        const c = n.country || "unknown";
-        if (!gruplar[c]) gruplar[c] = [];
-        gruplar[c].push(n);
-      });
-
-      const sirali = Object.keys(gruplar).sort();
-      if (!sirali.length) {
-        OTP_COUNTRY.innerHTML = '<option value="">ülke yok</option>';
-        return;
-      }
-
-      sirali.forEach(c => {
-        const o = document.createElement("option");
-        o.value = c;
-        o.textContent = c + "  ·  " + gruplar[c].length + " numara";
-        OTP_COUNTRY.appendChild(o);
-      });
-
-      document.getElementById("otpCount").textContent = d.count + " numara";
-      otpLoadNumbers();
-    } catch (e) {
-      OTP_COUNTRY.innerHTML = '<option value="">yüklenemedi: ' + escHtml(e.message) + '</option>';
-    }
-  }
-
-  async function otpLoadNumbers(){
-    const country = OTP_COUNTRY.value;
-    if (!country) {
-      OTP_PHONE.innerHTML = '<option value="">önce ülke seç</option>';
-      return;
-    }
-    OTP_PHONE.innerHTML = '<option value="">yükleniyor...</option>';
-
-    try {
-      const d = await otpCall({action: "numbers"});
-      OTP_PHONE.innerHTML = "";
-      const filtreli = (d.data || []).filter(n => n.country === country);
-
-      if (!filtreli.length) {
-        OTP_PHONE.innerHTML = '<option value="">numara yok (manuel gir)</option>';
-        return;
-      }
-
-      filtreli.forEach(n => {
-        const o = document.createElement("option");
-        o.value = n.phone;
-        o.textContent = (n.display || ("+" + n.phone));
-        OTP_PHONE.appendChild(o);
-      });
-    } catch (e) {
-      OTP_PHONE.innerHTML = '<option value="">hata: ' + escHtml(e.message) + '</option>';
-    }
-  }
-
-  async function otpFetch(){
-    const btn = document.getElementById('otpBtn');
-    const res = document.getElementById('result-otp');
-
-    let phone = (OTP_MANUAL.value || "").replace(/\D/g, "");
-    if (!phone) phone = OTP_PHONE.value;
-
-    if (!phone) {
-      res.classList.add("active");
-      res.innerHTML = '<div class="result-badge err">✗ ülke ve numara seç</div>';
-      return;
+    // Arama varsa search endpoint'i, yoksa seçilen action
+    let url;
+    if (q) {
+      url = `${NP_API}?action=search&q=${encodeURIComponent(q)}&limit=${count}`;
+    } else if (action === 'lifetime') {
+      url = `${NP_API}?action=lifetime`;
+    } else if (action === 'services') {
+      url = `${NP_API}?action=services`;
+    } else {
+      url = `${NP_API}?action=${action}&count=${count}`;
     }
 
+    document.getElementById('npUrl').textContent = url;
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> çekiliyor...';
-    res.classList.add("active");
-    res.innerHTML = '<span class="spinner"></span> SMS\'ler alınıyor...';
+    res.classList.add('active');
+    res.innerHTML = '<span class="spinner"></span> yükleniyor...';
 
     try {
-      const d = await otpCall({action: "sms", phone});
-      const list = d.data || [];
+      const r = await fetch(url);
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const d = await r.json();
 
-      if (!list.length) {
-        res.innerHTML = `<div class="result-badge err">✗ SMS yok</div>+${escHtml(phone)} numarasına henüz mesaj gelmemiş.`;
+      if (!d.success) {
+        res.innerHTML = `<div class="result-badge err">✗ ${escHtml(d.error || 'hata')}</div>`;
         return;
       }
 
-      list.sort((a,b) => (b.otp ? 1 : 0) - (a.otp ? 1 : 0));
+      // Servis istatistikleri görünümü
+      if (action === 'services' && !q) {
+        let html = `<div class="result-badge ok">✓ ${d.count} servis</div>`;
+        d.data.forEach(s => {
+          html += `
+            <div class="sms-item">
+              <div class="sms-head">
+                <span class="sender">${escHtml(s.service)}</span>
+                <span>${s.count} adet</span>
+              </div>
+            </div>`;
+        });
+        res.innerHTML = html;
+        return;
+      }
 
-      let html = `<div class="result-badge ok">✓ ${list.length} SMS bulundu</div>`;
+      // Normal OTP listesi
+      const list = d.data || [];
+      if (!list.length) {
+        res.innerHTML = `<div class="result-badge err">✗ Kayıt yok</div>Filtre boş olabilir veya API şu an boş döndü.`;
+        return;
+      }
+
+      let html = `<div class="result-badge ok">✓ ${list.length} kayıt`;
+      if (d.query) html += ` (arama: ${escHtml(d.query)})`;
+      html += `</div>`;
+
       list.forEach(m => {
-        const otpTag = m.otp
-          ? `<div class="otp-tag">OTP · ${escHtml(m.otp)}</div>`
-          : "";
+        const otpTag = m.otp ? `<div class="otp-tag">OTP · ${escHtml(m.otp)}</div>` : '';
+        const country = m.country ? `<span class="country">${escHtml(m.country)}</span>` : '';
         html += `
           <div class="sms-item${m.otp ? ' has-otp' : ''}">
             <div class="sms-head">
-              <span class="sender">${escHtml(m.sender || "-")}</span>
-              <span>${escHtml(m.date || "")}</span>
+              <span class="sender">${escHtml(m.service || '-')}</span>
+              ${country}
+              <span>${escHtml(m.date || '')}</span>
             </div>
-            <div class="sms-body">${escHtml(m.text || "")}</div>
+            <div class="sms-body">
+              <span class="phone">+${escHtml(m.phone || '')}</span><br>
+              ${escHtml(m.message || '')}
+            </div>
             ${otpTag}
           </div>`;
       });
       res.innerHTML = html;
+
     } catch (e) {
-      res.innerHTML = `<div class="result-badge err">✗ hata</div>${escHtml(e.message)}`;
+      res.innerHTML = `<div class="result-badge err">✗ Hata</div>${escHtml(e.message)}`;
     } finally {
       btn.disabled = false;
-      btn.textContent = "📡 SMS Getir";
+      btn.textContent = '📡 Çek';
     }
   }
 
-  OTP_COUNTRY.addEventListener('change', otpLoadNumbers);
-  OTP_MANUAL.addEventListener('keydown', e => { if(e.key === "Enter") otpFetch(); });
-  otpLoadCountries();
+  // Enter ile ara
+  NP_SEARCH.addEventListener('keypress', e => {
+    if (e.key === 'Enter') testNP();
+  });
 </script>
 
 </body>
