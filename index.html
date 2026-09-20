@@ -433,14 +433,35 @@
     letter-spacing: .12em;
   }
 
-  .gpt-answer {
+  .number-result {
     font-family: 'Inter', sans-serif;
-    font-size: .92rem;
-    line-height: 1.75;
+    font-size: .85rem;
+    line-height: 1.7;
     color: var(--text);
-    white-space: pre-wrap;
-    word-break: break-word;
+    white-space: normal;
   }
+  .number-result .kv {
+    display: flex;
+    gap: .6rem;
+    padding: .45rem 0;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .number-result .kv:last-child { border-bottom: none; }
+  .number-result .k {
+    color: var(--text-dim);
+    font-weight: 600;
+    min-width: 130px;
+    font-size: .78rem;
+  }
+  .number-result .v {
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: .78rem;
+    word-break: break-word;
+    flex: 1;
+  }
+  .number-result .v.highlight { color: var(--success); font-weight: 700; }
 
   .footer {
     text-align: center;
@@ -501,32 +522,32 @@
     </div>
   </div>
 
-  <!-- GPT / GEMINI CHAT -->
+  <!-- NUMBER LOOKUP -->
   <div class="category">
-    <div class="category-title">🤖 AI Chat <span class="count">1 endpoint</span></div>
+    <div class="category-title">📱 Numara Sorgulama <span class="count">1 endpoint</span></div>
     <div class="grid">
       <div class="api-card">
         <div class="api-header">
-          <span class="api-name">🤖 GPT Chat</span>
+          <span class="api-name">📱 Numara → Bilgi (OSINT)</span>
           <span class="api-method">GET</span>
         </div>
-        <div class="api-desc">Gemini 2.0 Flash ile sohbet. Sorunu yaz, AI yanıtlasın. 60 saniye cache'li.</div>
+        <div class="api-desc">Telefon numarası ile kayıtlı bilgileri sorgular. Ülke kodu ile birlikte gönderin (ör: +905551234567).</div>
 
         <div class="input-group">
-          <textarea id="gptQuery" placeholder="Sorunu yaz... (Enter = gönder, Shift+Enter = yeni satır)" rows="2"></textarea>
+          <input type="text" id="numQuery" placeholder="+905551234567" value="+905551234567">
         </div>
 
-        <div class="api-url" id="gptUrlBox">
-          <span class="url-text" id="gptUrl">https://ucretsizservicetr.onrender.com/gpt.php?q=merhaba</span>
-          <button class="copy-btn" onclick="copyUrl('gptUrl')">kopyala</button>
+        <div class="api-url" id="numUrlBox">
+          <span class="url-text" id="numUrl">https://ucretsizservicetr.onrender.com/numlookup?no=+905551234567</span>
+          <button class="copy-btn" onclick="copyUrl('numUrl')">kopyala</button>
         </div>
 
         <div class="button-group">
-          <button class="try-btn" id="gptBtn" onclick="testGPT()">🤖 Sor</button>
-          <button class="go-btn" onclick="goToUrl('gptUrl')">🌐 Aç</button>
+          <button class="try-btn" id="numBtn" onclick="testNum()">📱 Sorgula</button>
+          <button class="go-btn" onclick="goToUrl('numUrl')">🌐 Aç</button>
         </div>
 
-        <div id="result-gpt" class="result-area"></div>
+        <div id="result-num" class="result-area"></div>
       </div>
     </div>
   </div>
@@ -650,30 +671,59 @@
     return String(s||"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   }
 
-  // ═════════ GPT / GEMINI ═════════
-  async function testGPT() {
-    const q = document.getElementById('gptQuery').value.trim();
-    if (!q) { showToast('Soru gir'); return; }
+  // ═════════ NUMARA SORGULAMA ═════════
+  async function testNum() {
+    const q = document.getElementById('numQuery').value.trim();
+    if (!q) { showToast('Numara gir'); return; }
 
-    const btn = document.getElementById('gptBtn');
-    const res = document.getElementById('result-gpt');
-    const url = `https://ucretsizservicetr.onrender.com/gpt.php?q=${encodeURIComponent(q)}`;
+    const btn = document.getElementById('numBtn');
+    const res = document.getElementById('result-num');
+    const url = `https://ucretsizservicetr.onrender.com/numlookup?no=${encodeURIComponent(q)}`;
 
-    document.getElementById('gptUrl').textContent = url;
+    document.getElementById('numUrl').textContent = url;
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span> düşünüyor...';
+    btn.innerHTML = '<span class="spinner"></span> sorgulanıyor...';
     res.classList.add('active');
-    res.innerHTML = '<span class="spinner"></span> AI yanıtlıyor...';
+    res.innerHTML = '<span class="spinner"></span> Numara sorgulanıyor...';
 
     try {
       const r = await fetch(url);
       const d = await r.json();
 
       if (d.success) {
-        const badge = `✓ ${escHtml(d.model || 'gemini')}${d.cached ? ' (cache)' : ''}`;
-        res.innerHTML = `
-          <div class="result-badge ok">${badge}</div>
-          <div class="gpt-answer">${escHtml(d.answer)}</div>`;
+        const data = d.results || {};
+        let html = `<div class="result-badge ok">✓ ${escHtml(d.number || q)}</div>`;
+        html += `<div class="number-result">`;
+
+        const fields = [
+          ['Numara', d.number || q, true],
+          ['Ülke', data.country || data.country_name || '-', false],
+          ['Operatör', data.carrier || data.operator || '-', false],
+          ['Hat Tipi', data.line_type || data.type || '-', false],
+          ['Bölge', data.location || data.region || '-', false],
+          ['Şehir', data.city || '-', false],
+          ['Zaman Dilimi', data.timezone || '-', false],
+          ['Geçerli', data.valid !== undefined ? (data.valid ? 'Evet' : 'Hayır') : '-', false],
+          ['E.164', data.e164 || '-', false],
+          ['Uluslararası', data.international || '-', false],
+          ['Ulusal', data.national || '-', false],
+          ['Ülke Kodu', data.country_code || '-', false],
+        ];
+
+        let hasAny = false;
+        fields.forEach(([k, v, hl]) => {
+          if (v && v !== '-') {
+            hasAny = true;
+            html += `<div class="kv"><span class="k">${escHtml(k)}</span><span class="v${hl ? ' highlight' : ''}">${escHtml(v)}</span></div>`;
+          }
+        });
+
+        if (!hasAny || Object.keys(data).length === 0) {
+          html += `<div class="kv"><span class="k">Sonuç</span><span class="v">Kayıt bulunamadı</span></div>`;
+        }
+
+        html += `</div>`;
+        res.innerHTML = html;
       } else {
         res.innerHTML = `<div class="result-badge err">✗ ${escHtml(d.error || 'hata')}</div>`;
       }
@@ -681,16 +731,12 @@
       res.innerHTML = `<div class="result-badge err">✗ Hata</div>${escHtml(e.message)}`;
     } finally {
       btn.disabled = false;
-      btn.textContent = '🤖 Sor';
+      btn.textContent = '📱 Sorgula';
     }
   }
 
-  // Enter = gönder, Shift+Enter = yeni satır
-  document.getElementById('gptQuery').addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      testGPT();
-    }
+  document.getElementById('numQuery').addEventListener('keypress', e => {
+    if (e.key === 'Enter') testNum();
   });
 
   // ═════════ BINANCE ═════════
@@ -744,6 +790,7 @@
     if (e.key === 'Enter') testBinance();
   });
 
+  // ═════════ OTP / SMS ═════════
   const NP_API = "https://ucretsizservicetr.onrender.com/smsotp.php";
   const NP_ACTION = document.getElementById('npAction');
   const NP_SEARCH = document.getElementById('npSearch');
