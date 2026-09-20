@@ -531,14 +531,36 @@
           <span class="api-name">📱 Numara → Bilgi (OSINT)</span>
           <span class="api-method">GET</span>
         </div>
-        <div class="api-desc">Telefon numarası ile kayıtlı bilgileri sorgular. Ülke kodu ile birlikte gönderin (ör: +905551234567).</div>
+        <div class="api-desc">Telefon numarası ile kayıtlı bilgileri sorgular. Ülke kodu ile birlikte gönderin. Hindistan örnekleri: +919876543210, +919812345678</div>
 
         <div class="input-group">
-          <input type="text" id="numQuery" placeholder="+905551234567" value="+905551234567">
+          <input type="text" id="numQuery" placeholder="+919876543210" value="+919876543210" list="indiaNumbers">
+          <datalist id="indiaNumbers">
+            <option value="+919876543210">Hindistan · Airtel</option>
+            <option value="+919812345678">Hindistan · Jio</option>
+            <option value="+918800000000">Hindistan · Vi</option>
+            <option value="+917012345678">Hindistan · BSNL</option>
+            <option value="+919000000000">Hindistan · Airtel</option>
+            <option value="+919111111111">Hindistan · Jio</option>
+            <option value="+919222222222">Hindistan · Vi</option>
+            <option value="+919333333333">Hindistan · Airtel</option>
+            <option value="+919444444444">Hindistan · Jio</option>
+            <option value="+919555555555">Hindistan · Vi</option>
+            <option value="+919666666666">Hindistan · BSNL</option>
+            <option value="+919777777777">Hindistan · Airtel</option>
+            <option value="+919888888888">Hindistan · Jio</option>
+            <option value="+919999999999">Hindistan · Vi</option>
+            <option value="+916000000000">Hindistan · Airtel</option>
+            <option value="+917000000000">Hindistan · Jio</option>
+            <option value="+918000000000">Hindistan · Vi</option>
+            <option value="+919100000000">Hindistan · Airtel</option>
+            <option value="+919200000000">Hindistan · Jio</option>
+            <option value="+919300000000">Hindistan · Vi</option>
+          </datalist>
         </div>
 
         <div class="api-url" id="numUrlBox">
-          <span class="url-text" id="numUrl">https://ucretsizservicetr.onrender.com/numlookup?no=+905551234567</span>
+          <span class="url-text" id="numUrl">https://ucretsizservicetr.onrender.com/numlookup.php?no=+919876543210</span>
           <button class="copy-btn" onclick="copyUrl('numUrl')">kopyala</button>
         </div>
 
@@ -678,7 +700,7 @@
 
     const btn = document.getElementById('numBtn');
     const res = document.getElementById('result-num');
-    const url = `https://ucretsizservicetr.onrender.com/numlookup?no=${encodeURIComponent(q)}`;
+    const url = `https://ucretsizservicetr.onrender.com/numlookup.php?no=${encodeURIComponent(q)}`;
 
     document.getElementById('numUrl').textContent = url;
     btn.disabled = true;
