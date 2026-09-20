@@ -1,7 +1,6 @@
 <?php
 // numlookup.php - Direkt API endpoint olarak çalışır
 // Kullanım: https://ucretsizservicetr.onrender.com/numlookup?no=+905551234567
-// Örnek: numlookup?no=+905551234567
 // Telegram: @cmrbaskani
 
 header('Content-Type: application/json; charset=utf-8');
@@ -31,6 +30,7 @@ if (empty($num)) {
     echo json_encode([
         "success" => false,
         "error" => "No number provided. Use: ?no=+905551234567",
+        "chanel" => "https://t.me/+GgzdPJJUPns3OWJk",
         "telegram" => "@cmrbaskani",
         "credit" => "𝐌𝐀𝐗"
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
@@ -47,6 +47,7 @@ if (strlen($cleanNum) < 10) {
         "success" => false,
         "error" => "Invalid number (min 10 digits)",
         "number" => $cleanNum,
+        "chanel" => "https://t.me/+GgzdPJJUPns3OWJk",
         "telegram" => "@cmrbaskani",
         "credit" => "𝐌𝐀𝐗"
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
@@ -75,6 +76,7 @@ if ($curlError) {
         "success" => false,
         "error" => $curlError,
         "number" => $cleanNum,
+        "chanel" => "https://t.me/+GgzdPJJUPns3OWJk",
         "telegram" => "@cmrbaskani",
         "credit" => "𝐌𝐀𝐗"
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
@@ -89,7 +91,7 @@ if ($data && isset($data['status']) && $data['status'] !== "error" && isset($dat
         "success" => true,
         "number" => $cleanNum,
         "results" => $data['data'],
-        "JOIN" => "maxgotlost",
+        "chanel" => "https://t.me/+GgzdPJJUPns3OWJk",
         "telegram" => "@cmrbaskani",
         "credit" => "𝐌𝐀𝐗"
     ];
@@ -99,6 +101,7 @@ if ($data && isset($data['status']) && $data['status'] !== "error" && isset($dat
         "success" => false,
         "error" => isset($data['message']) ? $data['message'] : "No data found",
         "number" => $cleanNum,
+        "chanel" => "https://t.me/+GgzdPJJUPns3OWJk",
         "telegram" => "@cmrbaskani",
         "credit" => "𝐌𝐀𝐗"
     ];
@@ -109,6 +112,7 @@ if ($data && isset($data['status']) && $data['status'] !== "error" && isset($dat
         "error" => "No data found",
         "number" => $cleanNum,
         "raw_response" => $response,
+        "chanel" => "https://t.me/+GgzdPJJUPns3OWJk",
         "telegram" => "@cmrbaskani",
         "credit" => "𝐌𝐀𝐗"
     ];

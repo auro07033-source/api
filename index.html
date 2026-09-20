@@ -725,7 +725,11 @@
         html += `</div>`;
         res.innerHTML = html;
       } else {
-        res.innerHTML = `<div class="result-badge err">✗ ${escHtml(d.error || 'hata')}</div>`;
+        let html = `<div class="result-badge err">✗ ${escHtml(d.error || 'hata')}</div>`;
+        if (d.chanel) {
+          html += `<div class="number-result"><div class="kv"><span class="k">Kanal</span><span class="v"><a href="${escHtml(d.chanel)}" target="_blank" style="color:var(--primary)">${escHtml(d.chanel)}</a></span></div></div>`;
+        }
+        res.innerHTML = html;
       }
     } catch (e) {
       res.innerHTML = `<div class="result-badge err">✗ Hata</div>${escHtml(e.message)}`;
