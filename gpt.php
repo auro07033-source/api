@@ -9,10 +9,7 @@ header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, X-API-Key');
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(204);
-    exit;
-}
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 
 class AI {
     private $base_url = "https://chat.chatex.ai";
@@ -36,9 +33,7 @@ class AI {
             "id" => $this->chat_id,
             "message" => [
                 "role" => "user",
-                "parts" => [
-                    ["type" => "text", "text" => $message]
-                ],
+                "parts" => [["type" => "text", "text" => $message]],
                 "id" => $this->uuid()
             ],
             "selectedChatModel" => "chatex/auto",
@@ -54,23 +49,31 @@ class AI {
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => json_encode($payload),
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HEADER => false,
+            CURLOPT_HEADER => true,                // ← header'ı da al
             CURLOPT_TIMEOUT => 120,
             CURLOPT_CONNECTTIMEOUT => 15,
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_COOKIEJAR => $this->cookie_file,
             CURLOPT_COOKIEFILE => $this->cookie_file,
+            CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_HTTPHEADER => [
                 "Content-Type: application/json",
-                "User-Agent: ai/1.0",
+                "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
                 "Origin: https://chat.chatex.ai",
                 "Referer: https://chat.chatex.ai/",
                 "Accept: text/event-stream"
             ],
         ]);
 
+        // Streaming response
         $full_response = "";
         $usage = null;
+        $header_size = 0;
+
+        curl_setopt($ch, CURLOPT_HEADERFUNCTION, function($ch, $header) use (&$header_size) {
+            $header_size += strlen($header);
+            return strlen($header);
+        });
 
         curl_setopt($ch, CURLOPT_WRITEFUNCTION, function($ch, $data) use (&$full_response, &$usage) {
             $lines = explode("\n", $data);
@@ -94,28 +97,32 @@ class AI {
             return strlen($data);
         });
 
-        curl_exec($ch);
+        $raw = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curl_error = curl_error($ch);
+        $curl_errno = curl_errno($ch);
         curl_close($ch);
 
-        if ($curl_error) {
-            return ["error" => "cURL: " . $curl_error];
-        }
-        if ($http_code !== 200) {
-            return ["error" => "HTTP " . $http_code];
+        if ($curl_errno) {
+            return ["error" => "cURL #$curl_errno: $curl_error"];
         }
 
-        return [
-            "response" => $full_response,
-            "usage" => $usage
-        ];
+        if ($http_code !== 200) {
+            // Header + body'den hata detayı çıkart
+            $body = substr($raw, $header_size);
+            $detay = substr($body, 0, 500);
+            return ["error" => "Chatex HTTP $http_code - " . $detay];
+        }
+
+        if (empty($full_response)) {
+            return ["error" => "Chatex bos yanit dondu. Model: chatex/auto"];
+        }
+
+        return ["response" => $full_response, "usage" => $usage];
     }
 
     public function __destruct() {
-        if (file_exists($this->cookie_file)) {
-            @unlink($this->cookie_file);
-        }
+        if (file_exists($this->cookie_file)) @unlink($this->cookie_file);
     }
 }
 
@@ -129,7 +136,7 @@ if (empty(trim($q))) {
     http_response_code(400);
     echo json_encode([
         "success" => false,
-        "error" => "q parametresi gerekli (örn: ?q=merhaba&key=YOUR_KEY)",
+        "error" => "q parametresi gerekli (orn: ?q=merhaba&key=YOUR_KEY)",
         "telegram" => "@cmrbaskani",
         "chanel" => "https://t.me/+GgzdPJJUPns3OWJk"
     ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
@@ -140,7 +147,7 @@ $tool = new AI();
 $result = $tool->send(trim($q));
 
 if (isset($result['error'])) {
-    http_response_code(500);
+    http_response_code(200); // hata olsa da 200 dön, frontend error mesajını görsün
     echo json_encode([
         "success" => false,
         "error" => $result['error'],
