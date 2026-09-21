@@ -234,23 +234,33 @@
     </div>
   </div>
 
-  <!-- GPT / AI CHAT -->
+  <!-- AI CHAT -->
   <div class="category">
-    <div class="category-title">🤖 AI Chat <span class="count">1 endpoint</span></div>
+    <div class="category-title">🤖 AI Chat <span class="count">5 model</span></div>
     <div class="grid">
       <div class="api-card">
         <div class="api-header">
-          <span class="api-name">🤖 GPT Chat</span>
+          <span class="api-name">🤖 GPT Chat Pro</span>
           <span class="api-method">GET</span>
         </div>
-        <div class="api-desc">Chatex.ai üzerinden AI sohbet. Sorunu yaz, yanıt al. Enter = gönder, Shift+Enter = yeni satır.</div>
+        <div class="api-desc">Çoklu model AI sohbet. Model seç, sorunu yaz, yanıt al. Enter = gönder, Shift+Enter = yeni satır.</div>
+
+        <div class="input-group">
+          <select id="gptModel">
+            <option value="yqcloud">Yqcloud · Step</option>
+            <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
+            <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+            <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash Lite</option>
+            <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite</option>
+          </select>
+        </div>
 
         <div class="input-group">
           <textarea id="gptQuery" placeholder="Sorunu yaz..." rows="2"></textarea>
         </div>
 
         <div class="api-url" id="gptUrlBox">
-          <span class="url-text" id="gptUrl">https://ucretsizservicetr.onrender.com/gpt.php?q=merhaba&key=***</span>
+          <span class="url-text" id="gptUrl">https://ucretsizservicetr.onrender.com/gptpro.php?model=yqcloud&q=merhaba</span>
           <button class="copy-btn" onclick="copyUrl('gptUrl')">kopyala</button>
         </div>
 
@@ -435,16 +445,37 @@
     return String(s||"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   }
 
-  // ═════════ GPT / AI CHAT ═════════
+  // ═════════ AI CHAT ═════════
+  const GPT_MODEL_ISIMLERI = {
+    "yqcloud": "Yqcloud · Step",
+    "gemini-3.5-flash": "Gemini 3.5 Flash",
+    "gemini-2.5-flash": "Gemini 2.5 Flash",
+    "gemini-3.5-flash-lite": "Gemini 3.5 Flash Lite",
+    "gemini-3.1-flash-lite": "Gemini 3.1 Flash Lite"
+  };
+
+  const gptModelSelect = document.getElementById('gptModel');
+  const gptUrlEl = document.getElementById('gptUrl');
+
+  function gptUrlGuncelle() {
+    const model = gptModelSelect.value;
+    const q = document.getElementById('gptQuery').value.trim() || 'merhaba';
+    gptUrlEl.textContent = apiUrl('/gptpro.php', { model, q });
+  }
+  gptModelSelect.addEventListener('change', gptUrlGuncelle);
+  document.getElementById('gptQuery').addEventListener('input', gptUrlGuncelle);
+  gptUrlGuncelle();
+
   async function testGPT() {
     const q = document.getElementById('gptQuery').value.trim();
+    const model = gptModelSelect.value;
     if (!q) { showToast('Soru gir'); return; }
 
     const btn = document.getElementById('gptBtn');
     const res = document.getElementById('result-gpt');
-    const url = apiUrl('/gpt.php', { q });
+    const url = apiUrl('/gptpro.php', { model, q });
 
-    document.getElementById('gptUrl').textContent = url;
+    gptUrlEl.textContent = url;
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> düşünüyor...';
     res.classList.add('active');
@@ -455,8 +486,9 @@
       const d = await r.json();
 
       if (d.success) {
+        const isim = d.isim || GPT_MODEL_ISIMLERI[model] || model;
         res.innerHTML = `
-          <div class="result-badge ok">✓ AI yanıtı</div>
+          <div class="result-badge ok">✓ ${escHtml(isim)} · ⚡ ${d.sure} sn · 📝 ${d.karakter} karakter</div>
           <div class="gpt-answer">${escHtml(d.response)}</div>`;
       } else {
         res.innerHTML = `<div class="result-badge err">✗ ${escHtml(d.error || 'hata')}</div>`;
