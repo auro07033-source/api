@@ -1,157 +1,172 @@
 <?php
-// gpt.php - Web endpoint (Chatex.ai AI proxy)
-// Telegram: @cmrbaskani
-// Kullanım: https://ucretsizservicetr.onrender.com/gpt.php?q=merhaba
+/**
+ * 🤖 GPT/Gemini Chat API — @cmrbaskani
+ * Dosya: gpt.php
+ * Sunucu: https://ucretsizservicetr.onrender.com/gpt.php
+ *
+ * Endpointler:
+ *   GET  gpt.php?q=merhaba
+ *   POST gpt.php  {"message": "merhaba"}
+ *   GET  gpt.php?action=health
+ */
 
-header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+header("Content-Type: application/json; charset=utf-8");
+header("Access-Control-Allow-Origin: *");
+header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type");
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(204);
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
+
+// ─── AYARLAR ───
+// Kendi Gemini API anahtarını buraya koy (Google AI Studio'dan ücretsiz)
+define('GEMINI_API_KEY', getenv('GEMINI_API_KEY') ?: '');
+define('GEMINI_MODEL',   'gemini-2.0-flash');
+define('GEMINI_URL',     'https://generativelanguage.googleapis.com/v1beta/models/' . GEMINI_MODEL . ':generateContent');
+
+// Fallback: supabase endpoint (senin verdiğin, ama sahibi başkası — kullanma)
+define('USE_SUPABASE_FALLBACK', false);
+define('SUPABASE_URL', 'https://qcpujeurnkbvwlvmylyx.supabase.co/functions/v1/chat');
+
+define('CACHE_DIR', sys_get_temp_dir() . '/gpt_cache');
+define('CACHE_TTL', 60);
+
+
+// ─── YARDIMCI ───
+function json_out($data, $code = 200) {
+    http_response_code($code);
+    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
     exit;
 }
+function err($msg, $code = 400) { json_out(["success" => false, "error" => $msg], $code); }
 
-class AI {
-    private $base_url = "https://chat.chatex.ai";
-    private $chat_id;
-    private $cookie_file;
+function cache_path($key) {
+    if (!is_dir(CACHE_DIR)) @mkdir(CACHE_DIR, 0777, true);
+    return CACHE_DIR . '/' . md5($key) . '.cache';
+}
 
-    public function __construct() {
-        $this->chat_id = $this->uuid();
-        $this->cookie_file = sys_get_temp_dir() . '/chatex_cookies_' . md5($this->chat_id) . '.txt';
-    }
+function ask_gemini($message) {
+    if (GEMINI_API_KEY === '') return null;
 
-    private function uuid() {
-        $data = random_bytes(16);
-        $data[6] = chr(ord($data[6]) & 0x0f | 0x40);
-        $data[8] = chr(ord($data[8]) & 0x3f | 0x80);
-        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
-    }
+    $url = GEMINI_URL . '?key=' . GEMINI_API_KEY;
+    $body = json_encode([
+        "contents" => [
+            ["role" => "user", "parts" => [["text" => $message]]]
+        ],
+        "generationConfig" => [
+            "temperature" => 0.9,
+            "maxOutputTokens" => 2048,
+        ],
+    ], JSON_UNESCAPED_UNICODE);
 
-    public function send($message) {
-        $payload = [
-            "id" => $this->chat_id,
-            "message" => [
-                "role" => "user",
-                "parts" => [
-                    ["type" => "text", "text" => $message]
-                ],
-                "id" => $this->uuid()
-            ],
-            "selectedChatModel" => "chatex/auto",
-            "selectedVisibilityType" => "private",
-            "webSearchEnabled" => false,
-            "imageGenerationEnabled" => false,
-            "isExistingChat" => false
-        ];
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => $body,
+        CURLOPT_TIMEOUT        => 60,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_HTTPHEADER     => [
+            'Content-Type: application/json',
+        ],
+    ]);
 
-        $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $this->base_url . "/api/chat",
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => json_encode($payload),
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HEADER => false,
-            CURLOPT_TIMEOUT => 120,
-            CURLOPT_CONNECTTIMEOUT => 15,
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_COOKIEJAR => $this->cookie_file,
-            CURLOPT_COOKIEFILE => $this->cookie_file,
-            CURLOPT_HTTPHEADER => [
-                "Content-Type: application/json",
-                "User-Agent: ai/1.0",
-                "Origin: https://chat.chatex.ai",
-                "Referer: https://chat.chatex.ai/",
-                "Accept: text/event-stream"
-            ],
-        ]);
+    $resp = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
 
-        $full_response = "";
-        $usage = null;
+    if ($code !== 200 || !$resp) return null;
 
-        curl_setopt($ch, CURLOPT_WRITEFUNCTION, function($ch, $data) use (&$full_response, &$usage) {
-            $lines = explode("\n", $data);
-            foreach ($lines as $line) {
-                $line = trim($line);
-                if (empty($line)) continue;
-                if (strpos($line, "data: ") === 0) {
-                    $json_str = substr($line, 6);
-                    if ($json_str === "[DONE]") continue;
-                    $event = json_decode($json_str, true);
-                    if (!$event) continue;
-                    if (isset($event['type'])) {
-                        if ($event['type'] === 'text-delta' && isset($event['delta'])) {
-                            $full_response .= $event['delta'];
-                        } elseif ($event['type'] === 'data-usage' && isset($event['data'])) {
-                            $usage = $event['data'];
-                        }
-                    }
+    $json = json_decode($resp, true);
+    if (!is_array($json)) return null;
+
+    $text = $json['candidates'][0]['content']['parts'][0]['text'] ?? null;
+    if ($text === null) return null;
+
+    return [
+        'text'   => $text,
+        'model'  => GEMINI_MODEL,
+        'raw'    => $json,
+    ];
+}
+
+
+// ─── ROUTE ───
+$action = $_GET['action'] ?? 'chat';
+
+switch ($action) {
+
+    // GET gpt.php?q=merhaba
+    // POST gpt.php {"message":"merhaba"}
+    case 'chat':
+        $message = '';
+
+        // GET parametresi
+        if (!empty($_GET['q'])) {
+            $message = trim($_GET['q']);
+        }
+
+        // POST body (JSON veya form)
+        if ($message === '') {
+            $raw = file_get_contents('php://input');
+            if ($raw) {
+                $decoded = json_decode($raw, true);
+                if (is_array($decoded)) {
+                    $message = trim($decoded['message'] ?? $decoded['q'] ?? $decoded['prompt'] ?? '');
+                } else {
+                    $message = trim($raw);
                 }
             }
-            return strlen($data);
-        });
-
-        curl_exec($ch);
-        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curl_error = curl_error($ch);
-        curl_close($ch);
-
-        if ($curl_error) {
-            return ["error" => "cURL: " . $curl_error];
         }
-        if ($http_code !== 200) {
-            return ["error" => "HTTP " . $http_code];
+        if ($message === '' && !empty($_POST['message'])) {
+            $message = trim($_POST['message']);
         }
 
-        return [
-            "response" => $full_response,
-            "usage" => $usage
-        ];
-    }
-
-    public function __destruct() {
-        if (file_exists($this->cookie_file)) {
-            @unlink($this->cookie_file);
+        if ($message === '') {
+            err("mesaj boş. 'q' parametresi veya POST body gerekli.");
         }
-    }
-}
 
-// ═══════════════════════════════════════════
-// WEB ENDPOINT
-// ═══════════════════════════════════════════
+        // Cache kontrol
+        $cf = cache_path('gemini_' . $message);
+        if (file_exists($cf) && (time() - filemtime($cf)) < CACHE_TTL) {
+            $cached = json_decode(file_get_contents($cf), true);
+            if ($cached) {
+                json_out([
+                    'success' => true,
+                    'cached'  => true,
+                    'model'   => $cached['model'] ?? GEMINI_MODEL,
+                    'answer'  => $cached['text'] ?? '',
+                ]);
+            }
+        }
 
-$q = $_GET['q'] ?? $_POST['q'] ?? '';
+        // Gemini çağrısı
+        $cevap = ask_gemini($message);
 
-if (empty(trim($q))) {
-    http_response_code(400);
-    echo json_encode([
-        "success" => false,
-        "error" => "q parametresi gerekli (örn: ?q=merhaba)",
-        "telegram" => "@cmrbaskani",
-        "chanel" => "https://t.me/+GgzdPJJUPns3OWJk"
-    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-    exit;
-}
+        if ($cevap === null) {
+            err("Gemini API yanıt vermedi. GEMINI_API_KEY doğru mu?", 502);
+        }
 
-$tool = new AI();
-$result = $tool->send(trim($q));
+        @file_put_contents($cf, json_encode($cevap, JSON_UNESCAPED_UNICODE));
 
-if (isset($result['error'])) {
-    http_response_code(500);
-    echo json_encode([
-        "success" => false,
-        "error" => $result['error'],
-        "telegram" => "@cmrbaskani",
-        "chanel" => "https://t.me/+GgzdPJJUPns3OWJk"
-    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-} else {
-    echo json_encode([
-        "success" => true,
-        "response" => $result['response'],
-        "usage" => $result['usage'],
-        "telegram" => "@cmrbaskani",
-        "chanel" => "https://t.me/+GgzdPJJUPns3OWJk"
-    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        json_out([
+            'success' => true,
+            'cached'  => false,
+            'model'   => $cevap['model'],
+            'answer'  => $cevap['text'],
+        ]);
+        break;
+
+    // GET gpt.php?action=health
+    case 'health':
+        json_out([
+            'success'    => true,
+            'status'     => 'ok',
+            'time'       => date('c'),
+            'model'      => GEMINI_MODEL,
+            'has_key'    => GEMINI_API_KEY !== '',
+        ]);
+        break;
+
+    default:
+        err("bilinmeyen action: $action", 404);
 }

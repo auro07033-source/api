@@ -1,35 +1,27 @@
 <?php
-// numlookup.php - Direkt API endpoint olarak çalışır
-// Kullanım: https://ucretsizservicetr.onrender.com/numlookup?no=+905551234567
-// Telegram: @cmrbaskani
+// numlookup.php - Key + Rate limit korumalı
+require_once __DIR__ . '/api_guard.php';
+ApiGuard::checkKey();
+ApiGuard::checkRate();
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST');
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, X-API-Key');
 
-// API ayarları
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
+
 $API_KEY = "c3177593b1359e00d0e6c1a2d2cc6408";
 $BASE_URL = "https://astha-9vd8.onrender.com/tapi-";
 
-// Numara parametresini al (no veya mobile)
-$num = '';
-if (isset($_GET['no'])) {
-    $num = trim($_GET['no']);
-} elseif (isset($_GET['mobile'])) {
-    $num = trim($_GET['mobile']);
-} elseif (isset($_POST['no'])) {
-    $num = trim($_POST['no']);
-} elseif (isset($_POST['mobile'])) {
-    $num = trim($_POST['mobile']);
-}
+$num = $_GET['no'] ?? $_GET['mobile'] ?? $_POST['no'] ?? $_POST['mobile'] ?? '';
+$num = trim($num);
 
-// Boş kontrolü
 if (empty($num)) {
     http_response_code(400);
     echo json_encode([
         "success" => false,
-        "error" => "No number provided. Use: ?no=+905551234567",
+        "error" => "No number provided. Use: ?no=+905551234567&key=YOUR_KEY",
         "chanel" => "https://t.me/+GgzdPJJUPns3OWJk",
         "telegram" => "@cmrbaskani",
         "credit" => "𝐌𝐀𝐗"
@@ -37,10 +29,8 @@ if (empty($num)) {
     exit;
 }
 
-// Sadece rakamları al
 $cleanNum = preg_replace('/[^0-9]/', '', $num);
 
-// Minimum 10 hane kontrolü
 if (strlen($cleanNum) < 10) {
     http_response_code(400);
     echo json_encode([
@@ -54,7 +44,6 @@ if (strlen($cleanNum) < 10) {
     exit;
 }
 
-// API isteği
 $url = $BASE_URL . $API_KEY . "?Astha=" . urlencode($cleanNum);
 
 $ch = curl_init();
@@ -69,7 +58,6 @@ $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 $curlError = curl_error($ch);
 curl_close($ch);
 
-// cURL hatası
 if ($curlError) {
     http_response_code(500);
     echo json_encode([
@@ -83,40 +71,21 @@ if ($curlError) {
     exit;
 }
 
-// API yanıtını çöz
 $data = json_decode($response, true);
 
 if ($data && isset($data['status']) && $data['status'] !== "error" && isset($data['data'])) {
-    $formattedData = [
-        "success" => true,
-        "number" => $cleanNum,
-        "results" => $data['data'],
-        "chanel" => "https://t.me/+GgzdPJJUPns3OWJk",
-        "telegram" => "@cmrbaskani",
-        "credit" => "𝐌𝐀𝐗"
-    ];
+    $out = ["success" => true, "number" => $cleanNum, "results" => $data['data']];
     http_response_code(200);
 } elseif ($data && isset($data['status']) && $data['status'] === "error") {
-    $formattedData = [
-        "success" => false,
-        "error" => isset($data['message']) ? $data['message'] : "No data found",
-        "number" => $cleanNum,
-        "chanel" => "https://t.me/+GgzdPJJUPns3OWJk",
-        "telegram" => "@cmrbaskani",
-        "credit" => "𝐌𝐀𝐗"
-    ];
+    $out = ["success" => false, "error" => $data['message'] ?? "No data found", "number" => $cleanNum];
     http_response_code(404);
 } else {
-    $formattedData = [
-        "success" => false,
-        "error" => "No data found",
-        "number" => $cleanNum,
-        "raw_response" => $response,
-        "chanel" => "https://t.me/+GgzdPJJUPns3OWJk",
-        "telegram" => "@cmrbaskani",
-        "credit" => "𝐌𝐀𝐗"
-    ];
+    $out = ["success" => false, "error" => "No data found", "number" => $cleanNum, "raw_response" => $response];
     http_response_code(404);
 }
 
-echo json_encode($formattedData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+$out['chanel'] = "https://t.me/+GgzdPJJUPns3OWJk";
+$out['telegram'] = "@cmrbaskani";
+$out['credit'] = "𝐌𝐀𝐗";
+
+echo json_encode($out, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
