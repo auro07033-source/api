@@ -1,8 +1,17 @@
 <?php
-// chatex_ai.php - Chatex.ai API PHP çevirisi
+// gpt.php - Web endpoint (Chatex.ai AI proxy)
 // Telegram: @cmrbaskani
-// Kullanım: php chatex_ai.php "mesajınız"
-// veya: php chatex_ai.php
+// Kullanım: https://ucretsizservicetr.onrender.com/gpt.php?q=merhaba
+
+header('Content-Type: application/json; charset=utf-8');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type');
+
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(204);
+    exit;
+}
 
 class AI {
     private $base_url = "https://chat.chatex.ai";
@@ -15,7 +24,6 @@ class AI {
     }
 
     private function uuid() {
-        // UUID v4 üret
         $data = random_bytes(16);
         $data[6] = chr(ord($data[6]) & 0x0f | 0x40);
         $data[8] = chr(ord($data[8]) & 0x3f | 0x80);
@@ -56,17 +64,14 @@ class AI {
                 "User-Agent: ai/1.0",
                 "Origin: https://chat.chatex.ai",
                 "Referer: https://chat.chatex.ai/",
-                "Accept: text/event-stream",
-                "X-Telegram: @cmrbaskani"
+                "Accept: text/event-stream"
             ],
         ]);
 
-        // Stream olarak al
         $full_response = "";
         $usage = null;
 
         curl_setopt($ch, CURLOPT_WRITEFUNCTION, function($ch, $data) use (&$full_response, &$usage) {
-            // SSE satırlarını işle
             $lines = explode("\n", $data);
             foreach ($lines as $line) {
                 $line = trim($line);
@@ -94,26 +99,15 @@ class AI {
         curl_close($ch);
 
         if ($curl_error) {
-            return [
-                "error" => "cURL: " . $curl_error,
-                "telegram" => "@cmrbaskani",
-                "chanel" => "https://t.me/+GgzdPJJUPns3OWJk"
-            ];
+            return ["error" => "cURL: " . $curl_error];
         }
-
         if ($http_code !== 200) {
-            return [
-                "error" => "HTTP " . $http_code,
-                "telegram" => "@cmrbaskani",
-                "chanel" => "https://t.me/+GgzdPJJUPns3OWJk"
-            ];
+            return ["error" => "HTTP " . $http_code];
         }
 
         return [
             "response" => $full_response,
-            "usage" => $usage,
-            "telegram" => "@cmrbaskani",
-            "chanel" => "https://t.me/+GgzdPJJUPns3OWJk"
+            "usage" => $usage
         ];
     }
 
@@ -125,37 +119,39 @@ class AI {
 }
 
 // ═══════════════════════════════════════════
-// ANA ÇALIŞTIRMA
+// WEB ENDPOINT
 // ═══════════════════════════════════════════
 
-$tool = new AI();
+$q = $_GET['q'] ?? $_POST['q'] ?? '';
 
-if ($argc > 1) {
-    // CLI argümanlarından mesaj al
-    $message = implode(" ", array_slice($argv, 1));
-} else {
-    // Kullanıcıdan input al
-    echo "Mesajınız: ";
-    $message = trim(fgets(STDIN));
-}
-
-if (empty($message)) {
+if (empty(trim($q))) {
+    http_response_code(400);
     echo json_encode([
-        "error" => "Mesaj boş",
+        "success" => false,
+        "error" => "q parametresi gerekli (örn: ?q=merhaba)",
         "telegram" => "@cmrbaskani",
         "chanel" => "https://t.me/+GgzdPJJUPns3OWJk"
-    ], JSON_UNESCAPED_UNICODE) . "\n";
-    exit(1);
+    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    exit;
 }
 
-$result = $tool->send($message);
+$tool = new AI();
+$result = $tool->send(trim($q));
 
 if (isset($result['error'])) {
+    http_response_code(500);
     echo json_encode([
+        "success" => false,
         "error" => $result['error'],
         "telegram" => "@cmrbaskani",
         "chanel" => "https://t.me/+GgzdPJJUPns3OWJk"
-    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) . "\n";
+    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 } else {
-    echo json_encode($result, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) . "\n";
+    echo json_encode([
+        "success" => true,
+        "response" => $result['response'],
+        "usage" => $result['usage'],
+        "telegram" => "@cmrbaskani",
+        "chanel" => "https://t.me/+GgzdPJJUPns3OWJk"
+    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 }

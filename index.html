@@ -463,6 +463,15 @@
   }
   .number-result .v.highlight { color: var(--success); font-weight: 700; }
 
+  .gpt-answer {
+    font-family: 'Inter', sans-serif;
+    font-size: .92rem;
+    line-height: 1.75;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
   .footer {
     text-align: center;
     margin-top: 3rem;
@@ -522,6 +531,36 @@
     </div>
   </div>
 
+  <!-- GPT / AI CHAT -->
+  <div class="category">
+    <div class="category-title">🤖 AI Chat <span class="count">1 endpoint</span></div>
+    <div class="grid">
+      <div class="api-card">
+        <div class="api-header">
+          <span class="api-name">🤖 GPT Chat</span>
+          <span class="api-method">GET</span>
+        </div>
+        <div class="api-desc">Chatex.ai üzerinden AI sohbet. Sorunu yaz, yanıt al. Enter = gönder, Shift+Enter = yeni satır.</div>
+
+        <div class="input-group">
+          <textarea id="gptQuery" placeholder="Sorunu yaz..." rows="2"></textarea>
+        </div>
+
+        <div class="api-url" id="gptUrlBox">
+          <span class="url-text" id="gptUrl">https://ucretsizservicetr.onrender.com/gpt.php?q=merhaba</span>
+          <button class="copy-btn" onclick="copyUrl('gptUrl')">kopyala</button>
+        </div>
+
+        <div class="button-group">
+          <button class="try-btn" id="gptBtn" onclick="testGPT()">🤖 Sor</button>
+          <button class="go-btn" onclick="goToUrl('gptUrl')">🌐 Aç</button>
+        </div>
+
+        <div id="result-gpt" class="result-area"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- NUMBER LOOKUP -->
   <div class="category">
     <div class="category-title">📱 Numara Sorgulama <span class="count">1 endpoint</span></div>
@@ -531,17 +570,14 @@
           <span class="api-name">📱 Numara → Bilgi (OSINT)</span>
           <span class="api-method">GET</span>
         </div>
-        <div class="api-desc">Telefon numarası ile kayıtlı bilgileri sorgular. Ülke kodu ile birlikte gönderin. Hindistan örnekleri: +919876543210, +919812345678</div>
+        <div class="api-desc">Telefon numarası ile kayıtlı bilgileri sorgular. Ülke kodu ile birlikte gönderin (ör: +905551234567).</div>
 
         <div class="input-group">
-          <input type="text" id="numQuery" placeholder="+919812345678" value="+919812345678" list="indiaNumbers">
-          <datalist id="indiaNumbers">
-            <option value="+919876543210">Hindistan · Airtel</option>
-          </datalist>
+          <input type="text" id="numQuery" placeholder="+905551234567" value="+905551234567">
         </div>
 
         <div class="api-url" id="numUrlBox">
-          <span class="url-text" id="numUrl">https://ucretsizservicetr.onrender.com/numlookup.php?no=+919876543210</span>
+          <span class="url-text" id="numUrl">https://ucretsizservicetr.onrender.com/numlookup.php?no=+905551234567</span>
           <button class="copy-btn" onclick="copyUrl('numUrl')">kopyala</button>
         </div>
 
@@ -673,6 +709,47 @@
   function escHtml(s){
     return String(s||"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   }
+
+  // ═════════ GPT / AI CHAT ═════════
+  async function testGPT() {
+    const q = document.getElementById('gptQuery').value.trim();
+    if (!q) { showToast('Soru gir'); return; }
+
+    const btn = document.getElementById('gptBtn');
+    const res = document.getElementById('result-gpt');
+    const url = `https://ucretsizservicetr.onrender.com/gpt.php?q=${encodeURIComponent(q)}`;
+
+    document.getElementById('gptUrl').textContent = url;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> düşünüyor...';
+    res.classList.add('active');
+    res.innerHTML = '<span class="spinner"></span> AI yanıtlıyor...';
+
+    try {
+      const r = await fetch(url);
+      const d = await r.json();
+
+      if (d.success) {
+        res.innerHTML = `
+          <div class="result-badge ok">✓ AI yanıtı</div>
+          <div class="gpt-answer">${escHtml(d.response)}</div>`;
+      } else {
+        res.innerHTML = `<div class="result-badge err">✗ ${escHtml(d.error || 'hata')}</div>`;
+      }
+    } catch (e) {
+      res.innerHTML = `<div class="result-badge err">✗ Hata</div>${escHtml(e.message)}`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '🤖 Sor';
+    }
+  }
+
+  document.getElementById('gptQuery').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      testGPT();
+    }
+  });
 
   // ═════════ NUMARA SORGULAMA ═════════
   async function testNum() {
