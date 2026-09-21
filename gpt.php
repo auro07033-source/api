@@ -1,172 +1,161 @@
 <?php
-/**
- * 🤖 GPT/Gemini Chat API — @cmrbaskani
- * Dosya: gpt.php
- * Sunucu: https://ucretsizservicetr.onrender.com/gpt.php
- *
- * Endpointler:
- *   GET  gpt.php?q=merhaba
- *   POST gpt.php  {"message": "merhaba"}
- *   GET  gpt.php?action=health
- */
+// chatex_ai.php - Chatex.ai API PHP çevirisi
+// Telegram: @cmrbaskani
+// Kullanım: php chatex_ai.php "mesajınız"
+// veya: php chatex_ai.php
 
-header("Content-Type: application/json; charset=utf-8");
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type");
+class AI {
+    private $base_url = "https://chat.chatex.ai";
+    private $chat_id;
+    private $cookie_file;
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
+    public function __construct() {
+        $this->chat_id = $this->uuid();
+        $this->cookie_file = sys_get_temp_dir() . '/chatex_cookies_' . md5($this->chat_id) . '.txt';
+    }
 
-// ─── AYARLAR ───
-// Kendi Gemini API anahtarını buraya koy (Google AI Studio'dan ücretsiz)
-define('GEMINI_API_KEY', getenv('GEMINI_API_KEY') ?: '');
-define('GEMINI_MODEL',   'gemini-2.0-flash');
-define('GEMINI_URL',     'https://generativelanguage.googleapis.com/v1beta/models/' . GEMINI_MODEL . ':generateContent');
+    private function uuid() {
+        // UUID v4 üret
+        $data = random_bytes(16);
+        $data[6] = chr(ord($data[6]) & 0x0f | 0x40);
+        $data[8] = chr(ord($data[8]) & 0x3f | 0x80);
+        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
+    }
 
-// Fallback: supabase endpoint (senin verdiğin, ama sahibi başkası — kullanma)
-define('USE_SUPABASE_FALLBACK', false);
-define('SUPABASE_URL', 'https://qcpujeurnkbvwlvmylyx.supabase.co/functions/v1/chat');
+    public function send($message) {
+        $payload = [
+            "id" => $this->chat_id,
+            "message" => [
+                "role" => "user",
+                "parts" => [
+                    ["type" => "text", "text" => $message]
+                ],
+                "id" => $this->uuid()
+            ],
+            "selectedChatModel" => "chatex/auto",
+            "selectedVisibilityType" => "private",
+            "webSearchEnabled" => false,
+            "imageGenerationEnabled" => false,
+            "isExistingChat" => false
+        ];
 
-define('CACHE_DIR', sys_get_temp_dir() . '/gpt_cache');
-define('CACHE_TTL', 60);
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $this->base_url . "/api/chat",
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => json_encode($payload),
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HEADER => false,
+            CURLOPT_TIMEOUT => 120,
+            CURLOPT_CONNECTTIMEOUT => 15,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_COOKIEJAR => $this->cookie_file,
+            CURLOPT_COOKIEFILE => $this->cookie_file,
+            CURLOPT_HTTPHEADER => [
+                "Content-Type: application/json",
+                "User-Agent: ai/1.0",
+                "Origin: https://chat.chatex.ai",
+                "Referer: https://chat.chatex.ai/",
+                "Accept: text/event-stream",
+                "X-Telegram: @cmrbaskani"
+            ],
+        ]);
 
+        // Stream olarak al
+        $full_response = "";
+        $usage = null;
 
-// ─── YARDIMCI ───
-function json_out($data, $code = 200) {
-    http_response_code($code);
-    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
-    exit;
-}
-function err($msg, $code = 400) { json_out(["success" => false, "error" => $msg], $code); }
-
-function cache_path($key) {
-    if (!is_dir(CACHE_DIR)) @mkdir(CACHE_DIR, 0777, true);
-    return CACHE_DIR . '/' . md5($key) . '.cache';
-}
-
-function ask_gemini($message) {
-    if (GEMINI_API_KEY === '') return null;
-
-    $url = GEMINI_URL . '?key=' . GEMINI_API_KEY;
-    $body = json_encode([
-        "contents" => [
-            ["role" => "user", "parts" => [["text" => $message]]]
-        ],
-        "generationConfig" => [
-            "temperature" => 0.9,
-            "maxOutputTokens" => 2048,
-        ],
-    ], JSON_UNESCAPED_UNICODE);
-
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => $body,
-        CURLOPT_TIMEOUT        => 60,
-        CURLOPT_SSL_VERIFYPEER => false,
-        CURLOPT_HTTPHEADER     => [
-            'Content-Type: application/json',
-        ],
-    ]);
-
-    $resp = curl_exec($ch);
-    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    if ($code !== 200 || !$resp) return null;
-
-    $json = json_decode($resp, true);
-    if (!is_array($json)) return null;
-
-    $text = $json['candidates'][0]['content']['parts'][0]['text'] ?? null;
-    if ($text === null) return null;
-
-    return [
-        'text'   => $text,
-        'model'  => GEMINI_MODEL,
-        'raw'    => $json,
-    ];
-}
-
-
-// ─── ROUTE ───
-$action = $_GET['action'] ?? 'chat';
-
-switch ($action) {
-
-    // GET gpt.php?q=merhaba
-    // POST gpt.php {"message":"merhaba"}
-    case 'chat':
-        $message = '';
-
-        // GET parametresi
-        if (!empty($_GET['q'])) {
-            $message = trim($_GET['q']);
-        }
-
-        // POST body (JSON veya form)
-        if ($message === '') {
-            $raw = file_get_contents('php://input');
-            if ($raw) {
-                $decoded = json_decode($raw, true);
-                if (is_array($decoded)) {
-                    $message = trim($decoded['message'] ?? $decoded['q'] ?? $decoded['prompt'] ?? '');
-                } else {
-                    $message = trim($raw);
+        curl_setopt($ch, CURLOPT_WRITEFUNCTION, function($ch, $data) use (&$full_response, &$usage) {
+            // SSE satırlarını işle
+            $lines = explode("\n", $data);
+            foreach ($lines as $line) {
+                $line = trim($line);
+                if (empty($line)) continue;
+                if (strpos($line, "data: ") === 0) {
+                    $json_str = substr($line, 6);
+                    if ($json_str === "[DONE]") continue;
+                    $event = json_decode($json_str, true);
+                    if (!$event) continue;
+                    if (isset($event['type'])) {
+                        if ($event['type'] === 'text-delta' && isset($event['delta'])) {
+                            $full_response .= $event['delta'];
+                        } elseif ($event['type'] === 'data-usage' && isset($event['data'])) {
+                            $usage = $event['data'];
+                        }
+                    }
                 }
             }
-        }
-        if ($message === '' && !empty($_POST['message'])) {
-            $message = trim($_POST['message']);
-        }
+            return strlen($data);
+        });
 
-        if ($message === '') {
-            err("mesaj boş. 'q' parametresi veya POST body gerekli.");
-        }
+        curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curl_error = curl_error($ch);
+        curl_close($ch);
 
-        // Cache kontrol
-        $cf = cache_path('gemini_' . $message);
-        if (file_exists($cf) && (time() - filemtime($cf)) < CACHE_TTL) {
-            $cached = json_decode(file_get_contents($cf), true);
-            if ($cached) {
-                json_out([
-                    'success' => true,
-                    'cached'  => true,
-                    'model'   => $cached['model'] ?? GEMINI_MODEL,
-                    'answer'  => $cached['text'] ?? '',
-                ]);
-            }
+        if ($curl_error) {
+            return [
+                "error" => "cURL: " . $curl_error,
+                "telegram" => "@cmrbaskani",
+                "chanel" => "https://t.me/+GgzdPJJUPns3OWJk"
+            ];
         }
 
-        // Gemini çağrısı
-        $cevap = ask_gemini($message);
-
-        if ($cevap === null) {
-            err("Gemini API yanıt vermedi. GEMINI_API_KEY doğru mu?", 502);
+        if ($http_code !== 200) {
+            return [
+                "error" => "HTTP " . $http_code,
+                "telegram" => "@cmrbaskani",
+                "chanel" => "https://t.me/+GgzdPJJUPns3OWJk"
+            ];
         }
 
-        @file_put_contents($cf, json_encode($cevap, JSON_UNESCAPED_UNICODE));
+        return [
+            "response" => $full_response,
+            "usage" => $usage,
+            "telegram" => "@cmrbaskani",
+            "chanel" => "https://t.me/+GgzdPJJUPns3OWJk"
+        ];
+    }
 
-        json_out([
-            'success' => true,
-            'cached'  => false,
-            'model'   => $cevap['model'],
-            'answer'  => $cevap['text'],
-        ]);
-        break;
+    public function __destruct() {
+        if (file_exists($this->cookie_file)) {
+            @unlink($this->cookie_file);
+        }
+    }
+}
 
-    // GET gpt.php?action=health
-    case 'health':
-        json_out([
-            'success'    => true,
-            'status'     => 'ok',
-            'time'       => date('c'),
-            'model'      => GEMINI_MODEL,
-            'has_key'    => GEMINI_API_KEY !== '',
-        ]);
-        break;
+// ═══════════════════════════════════════════
+// ANA ÇALIŞTIRMA
+// ═══════════════════════════════════════════
 
-    default:
-        err("bilinmeyen action: $action", 404);
+$tool = new AI();
+
+if ($argc > 1) {
+    // CLI argümanlarından mesaj al
+    $message = implode(" ", array_slice($argv, 1));
+} else {
+    // Kullanıcıdan input al
+    echo "Mesajınız: ";
+    $message = trim(fgets(STDIN));
+}
+
+if (empty($message)) {
+    echo json_encode([
+        "error" => "Mesaj boş",
+        "telegram" => "@cmrbaskani",
+        "chanel" => "https://t.me/+GgzdPJJUPns3OWJk"
+    ], JSON_UNESCAPED_UNICODE) . "\n";
+    exit(1);
+}
+
+$result = $tool->send($message);
+
+if (isset($result['error'])) {
+    echo json_encode([
+        "error" => $result['error'],
+        "telegram" => "@cmrbaskani",
+        "chanel" => "https://t.me/+GgzdPJJUPns3OWJk"
+    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) . "\n";
+} else {
+    echo json_encode($result, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) . "\n";
 }
