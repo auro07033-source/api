@@ -1,606 +1,518 @@
 <?php
-/**
- * sorgubot.php — Telegram webhook bot
- * Butonlu sorgu, günlük 3 hak, referansla +3 hak
- * İletişim: @cmrbaskani
- */
+// sorgu_bot.php
+// Buton bazli sorgu botu. PHP + cURL ile. long polling.
+// Calistirma: php sorgu_bot.php
 
-// ═══════════ AYARLAR ═══════════
-define('BOT_TOKEN',   '8950660109:AAFB8lKqUYFuGJMIlNOQkjVMqoJe1_GEXm4');
-define('CHANNEL',     '@cmrbaskan');
-define('CHANNEL_URL', 'https://t.me/cmrbaskan');
-define('API_BASE',    'https://apiv2.ajaxsystems.fun');
-define('DATA_DIR',    __DIR__ . '/bot_data');
-define('USERS_FILE',  DATA_DIR . '/users.json');
-define('BOT_USERNAME','uzmansorgupanelbot'); // @ olmadan, örn: sorgubot
+$TOKEN = "8950660109:AAFB8lKqUYFuGJMIlNOQkjVMqoJe1_GEXm4";
+$CHANNEL = "@kehanetsorgu";
+$CHANNEL_LINK = "https://t.me/kehanetsorgu";
 
-if (!is_dir(DATA_DIR)) @mkdir(DATA_DIR, 0777, true);
+$SRC1 = getenv("SRC1") ?: "https://api.ajaxsystems.fun";
+$SRC2 = getenv("SRC2") ?: "https://mayte.pro/api/query";
 
-// ═══════════ TELEGRAM API ═══════════
-function tg($method, $data = []) {
-    $url = 'https://api.telegram.org/bot' . BOT_TOKEN . '/' . $method;
+$SMS_BASE = "https://ucretsizservicetr.onrender.com/smsotp.php";
+$BINANCE_BASE = "https://ucretsizservicetr.onrender.com/binancesrg.php";
+$GPT_BASE = "https://ucretsizservicetr.onrender.com/gptpro.php";
+$API_KEY = "cmrbaskani_2026_secret_key_xyz";
+$DEVICE_ID = "dev_j6dwyzi2j3s_1790075244015";
+
+$HEADERS_GET = [
+    "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "Accept: application/json, text/javascript, */*; q=0.01",
+];
+
+
+// ─────────────────────────────
+// Yardımcı fonksiyonlar
+// ─────────────────────────────
+
+function api($token, $method, $params = []) {
+    $url = "https://api.telegram.org/bot{$token}/{$method}";
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => http_build_query($data),
-        CURLOPT_TIMEOUT        => 20,
-        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => http_build_query($params),
+        CURLOPT_TIMEOUT => 60,
     ]);
-    $r = curl_exec($ch);
+    $res = curl_exec($ch);
     curl_close($ch);
-    return json_decode($r, true);
+    return json_decode($res, true);
 }
 
-function send($chat_id, $text, $kb = null, $parse = 'HTML') {
-    $data = [
-        'chat_id'    => $chat_id,
-        'text'       => $text,
-        'parse_mode' => $parse,
-    ];
-    if ($kb) $data['reply_markup'] = json_encode($kb);
-    return tg('sendMessage', $data);
-}
-
-function edit($chat_id, $msg_id, $text, $kb = null, $parse = 'HTML') {
-    $data = [
-        'chat_id'    => $chat_id,
-        'message_id' => $msg_id,
-        'text'       => $text,
-        'parse_mode' => $parse,
-    ];
-    if ($kb) $data['reply_markup'] = json_encode($kb);
-    return tg('editMessageText', $data);
-}
-
-function answer_cb($cb_id, $text = '') {
-    return tg('answerCallbackQuery', ['callback_query_id' => $cb_id, 'text' => $text]);
-}
-
-function send_doc($chat_id, $filename, $content) {
-    $url = 'https://api.telegram.org/bot' . BOT_TOKEN . '/sendDocument';
+function http_get($url, $headers = []) {
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => [
-            'chat_id'  => $chat_id,
-            'document' => new CURLFile($filename),
-        ],
-        CURLOPT_TIMEOUT        => 30,
-        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_HTTPHEADER => $headers,
+        CURLOPT_TIMEOUT => 25,
+        CURLOPT_FOLLOWLOCATION => true,
     ]);
-    file_put_contents($filename, $content);
-    $r = curl_exec($ch);
-    curl_close($ch);
-    @unlink($filename);
-    return json_decode($r, true);
-}
-
-// ═══════════ VERİ ═══════════
-function load_users() {
-    if (!file_exists(USERS_FILE)) return [];
-    $j = json_decode(@file_get_contents(USERS_FILE), true);
-    return is_array($j) ? $j : [];
-}
-function save_users($u) {
-    file_put_contents(USERS_FILE, json_encode($u, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), LOCK_EX);
-}
-
-function get_user($uid) {
-    $u = load_users();
-    if (!isset($u[$uid])) {
-        $u[$uid] = [
-            'id'        => $uid,
-            'username'  => '',
-            'first_name'=> '',
-            'kalan'     => 3,
-            'son_gun'   => date('Y-m-d'),
-            'ref_by'    => null,
-            'ref_sayisi'=> 0,
-            'ref_kazanc'=> 0,
-            'toplam'    => 0,
-            'created'   => time(),
-        ];
-        save_users($u);
-    }
-    // Günlük sıfırlama
-    if ($u[$uid]['son_gun'] !== date('Y-m-d')) {
-        $u[$uid]['kalan']   = 3;
-        $u[$uid]['son_gun'] = date('Y-m-d');
-        save_users($u);
-    }
-    return $u[$uid];
-}
-
-function update_user($uid, $fields) {
-    $u = load_users();
-    if (!isset($u[$uid])) return;
-    $u[$uid] = array_merge($u[$uid], $fields);
-    save_users($u);
-}
-
-function kalan_dus($uid) {
-    $u = load_users();
-    if (!isset($u[$uid])) return;
-    $u[$uid]['kalan']  = max(0, $u[$uid]['kalan'] - 1);
-    $u[$uid]['toplam'] = ($u[$uid]['toplam'] ?? 0) + 1;
-    save_users($u);
-}
-
-function hak_ekle($uid, $adet) {
-    $u = load_users();
-    if (!isset($u[$uid])) return;
-    $u[$uid]['kalan'] += $adet;
-    save_users($u);
-}
-
-// ═══════════ KANAL KONTROL ═══════════
-function uye_mi($uid) {
-    $r = tg('getChatMember', ['chat_id' => CHANNEL, 'user_id' => $uid]);
-    if (empty($r['ok'])) return false;
-    return in_array($r['result']['status'] ?? '', ['member', 'administrator', 'creator']);
-}
-
-// ═══════════ MENÜLER ═══════════
-function ana_menu() {
-    return ['inline_keyboard' => [
-        [
-            ['text' => '👤 TC Sorgu',    'callback_data' => 'q|tc'],
-            ['text' => '👤 TC Pro',      'callback_data' => 'q|tcpro'],
-        ],
-        [
-            ['text' => '👤 Ad Soyad',    'callback_data' => 'q|adsoyad'],
-            ['text' => '👤 Aile',        'callback_data' => 'q|aile'],
-        ],
-        [
-            ['text' => '👤 Aile Pro',    'callback_data' => 'q|ailepro'],
-            ['text' => '👤 Sülale',      'callback_data' => 'q|sulale'],
-        ],
-        [
-            ['text' => '📱 TC → GSM',    'callback_data' => 'q|tcgsm'],
-            ['text' => '📱 GSM → TC',    'callback_data' => 'q|gsmtc'],
-        ],
-        [
-            ['text' => '🎓 E-Okul',      'callback_data' => 'q|eokul'],
-        ],
-        [
-            ['text' => '🏠 Adres',       'callback_data' => 'q|adres'],
-            ['text' => '🏠 Tapu',        'callback_data' => 'q|tapu'],
-        ],
-        [
-            ['text' => '🏠 Ada Parsel',  'callback_data' => 'q|adaparsel'],
-        ],
-        [
-            ['text' => '👤 Hesabım',     'callback_data' => 'hesap'],
-            ['text' => '🔗 Referans',    'callback_data' => 'ref'],
-        ],
-    ]];
-}
-
-function iptal_menu() {
-    return ['inline_keyboard' => [[
-        ['text' => '❌ İptal', 'callback_data' => 'iptal'],
-    ]]];
-}
-
-function evet_hayir_menu($tip) {
-    return ['inline_keyboard' => [[
-        ['text' => '✅ Sorgula', 'callback_data' => 'ok|' . $tip],
-        ['text' => '❌ İptal',   'callback_data' => 'iptal'],
-    ]]];
-}
-
-// ═══════════ SORGU TİPLERİ ═══════════
-function sorgu_bilgi($tip) {
-    $harita = [
-        'tc'        => ['label' => 'TC Sorgu',    'alan' => 'tc',  'adim' => 'tc'],
-        'tcpro'     => ['label' => 'TC Pro',      'alan' => 'tc',  'adim' => 'tc'],
-        'aile'      => ['label' => 'Aile',        'alan' => 'tc',  'adim' => 'tc'],
-        'ailepro'   => ['label' => 'Aile Pro',    'alan' => 'tc',  'adim' => 'tc'],
-        'sulale'    => ['label' => 'Sülale',      'alan' => 'tc',  'adim' => 'tc'],
-        'adres'     => ['label' => 'Adres',       'alan' => 'tc',  'adim' => 'tc'],
-        'tapu'      => ['label' => 'Tapu',        'alan' => 'tc',  'adim' => 'tc'],
-        'eokul'     => ['label' => 'E-Okul',      'alan' => 'tc',  'adim' => 'tc'],
-        'tcgsm'     => ['label' => 'TC → GSM',    'alan' => 'tc',  'adim' => 'tc'],
-        'gsmtc'     => ['label' => 'GSM → TC',    'alan' => 'gsm', 'adim' => 'gsm'],
-        'adsoyad'   => ['label' => 'Ad Soyad',    'alan' => 'ad',  'adim' => 'ad'],
-        'adaparsel' => ['label' => 'Ada Parsel',  'alan' => 'il',  'adim' => 'il'],
-    ];
-    return $harita[$tip] ?? null;
-}
-
-// ═══════════ WEBHOOK ═══════════
-$update = json_decode(file_get_contents('php://input'), true);
-if (!$update) { http_response_code(200); exit; }
-
-// ═══════════ MESAJLAR ═══════════
-if (isset($update['message'])) {
-    $m  = $update['message'];
-    $cid = $m['chat']['id'];
-    $uid = $m['from']['id'];
-
-    // /start [ref]
-    if (isset($m['text']) && preg_match('/^\/start(?:\s+(.+))?$/', $m['text'], $mt)) {
-        $ref_id = $mt[1] ?? null;
-
-        // Kayıt / güncelleme
-        $u = get_user($uid);
-        update_user($uid, [
-            'username'   => $m['from']['username'] ?? '',
-            'first_name' => $m['from']['first_name'] ?? '',
-        ]);
-
-        // Referans işleme (ilk kez)
-        if ($ref_id && is_numeric($ref_id) && $ref_id != $uid && $u['ref_by'] === null) {
-            update_user($uid, ['ref_by' => $ref_id]);
-            hak_ekle($uid, 3);
-            hak_ekle($ref_id, 3);
-
-            $ru = load_users();
-            $ref_sayisi = ($ru[$ref_id]['ref_sayisi'] ?? 0) + 1;
-            $ref_kazanc = ($ru[$ref_id]['ref_kazanc'] ?? 0) + 3;
-            update_user($ref_id, ['ref_sayisi' => $ref_sayisi, 'ref_kazanc' => $ref_kazanc]);
-
-            send($ref_id, "🎉 <b>Yeni referans!</b>\n\nBir kişi senin davetinle katıldı.\n<b>+3 hak</b> kazandın.");
-        }
-
-        if (!uye_mi($uid)) {
-            send($cid,
-                "🚫 <b>Kanala katılman gerek</b>\n\n" .
-                "📢 <a href=\"" . CHANNEL_URL . "\">Kanala Katıl</a>\n\n" .
-                "Katıldıktan sonra <b>/start</b> tekrar yaz.",
-                null, 'HTML'
-            );
-            exit;
-        }
-
-        $u   = get_user($uid);
-        $ad  = $m['from']['username'] ? '@' . $m['from']['username'] : $m['from']['first_name'];
-
-        $metin = "🍀 Merhaba <b>" . htmlspecialchars($ad) . "</b>\n\n" .
-                 "📚 <b>Sorgu botuna hoş geldin.</b>\n\n" .
-                 "🎁 Günlük <b>3 ücretsiz</b> sorgu hakkın var.\n" .
-                 "🔗 Her referans ile <b>+3 hak</b> kazanırsın.\n\n" .
-                 "👇 Aşağıdaki butonlardan sorgu tipini seç.\n\n" .
-                 "<i>İletişim:</i> @cmrbaskani";
-
-        send($cid, $metin, ana_menu(), 'HTML');
-        exit;
-    }
-
-    // /ref
-    if (isset($m['text']) && $m['text'] === '/ref') {
-        ref_komut($cid, $uid);
-        exit;
-    }
-
-    // /hesap
-    if (isset($m['text']) && $m['text'] === '/hesap') {
-        hesap_komut($cid, $uid);
-        exit;
-    }
-
-    // Bekleyen adım (state)
-    if (isset($m['text']) && $m['text'] !== '' && is_numeric($uid)) {
-        $state = bekle_oku($uid);
-        if ($state) {
-            adim_isle($cid, $uid, $m['text'], $state);
-            exit;
-        }
-    }
-}
-
-// ═══════════ CALLBACK ═══════════
-if (isset($update['callback_query'])) {
-    $c   = $update['callback_query'];
-    $cid = $c['message']['chat']['id'];
-    $mid = $c['message']['message_id'];
-    $uid = $c['from']['id'];
-    $d   = $c['data'];
-
-    answer_cb($c['id']);
-
-    // Kanal kontrolü
-    if (!uye_mi($uid)) {
-        send($cid, "🚫 Önce kanala katıl: " . CHANNEL_URL, null, 'HTML');
-        exit;
-    }
-
-    // iptal
-    if ($d === 'iptal') {
-        bekle_sil($uid);
-        edit($cid, $mid, "❌ İptal edildi.\n\n👇 Menüden tekrar seç.", ana_menu(), 'HTML');
-        exit;
-    }
-
-    // hesap
-    if ($d === 'hesap') {
-        hesap_komut($cid, $uid, $mid);
-        exit;
-    }
-
-    // referans
-    if ($d === 'ref') {
-        ref_komut($cid, $uid, $mid);
-        exit;
-    }
-
-    // sorgu tipi seçimi
-    if (strpos($d, 'q|') === 0) {
-        $tip = substr($d, 2);
-        $b   = sorgu_bilgi($tip);
-        if (!$b) return;
-
-        $u = get_user($uid);
-        if ($u['kalan'] <= 0) {
-            edit($cid, $mid,
-                "⚠️ <b>Günlük hakkın doldu.</b>\n\n" .
-                "🔗 Referans ile <b>+3 hak</b> kazanabilirsin.\n\n" .
-                "Referans linkin için /ref yaz.",
-                ana_menu(), 'HTML'
-            );
-            return;
-        }
-
-        // Hangi bilgi isteniyor
-        $sorular = [
-            'tc'  => '📝 TC gir (11 hane):',
-            'gsm' => '📝 GSM gir (5xx...):',
-            'ad'  => '📝 Ad gir:',
-            'il'  => '📝 İl gir:',
-        ];
-        $alan = $b['alan'];
-
-        bekle_yaz($uid, ['tip' => $tip, 'adim' => $b['adim']]);
-
-        edit($cid, $mid, $sorular[$alan] . "\n\n<i>İptal için aşağıdaki butona bas.</i>", iptal_menu(), 'HTML');
-        exit;
-    }
-
-    // ok| ile onaylanan sorgu
-    if (strpos($d, 'ok|') === 0) {
-        $tip = substr($d, 3);
-        $state = bekle_oku($uid);
-        if (!$state || $state['tip'] !== $tip) {
-            edit($cid, $mid, "⚠️ Oturum süresi doldu, tekrar dene.", ana_menu(), 'HTML');
-            return;
-        }
-        sorgu_calistir($cid, $uid, $mid, $state);
-        exit;
-    }
-}
-
-// ═══════════ STATE (dosya bazlı) ═══════════
-function bekle_yaz($uid, $data) {
-    $f = DATA_DIR . '/state_' . $uid . '.json';
-    file_put_contents($f, json_encode($data), LOCK_EX);
-}
-function bekle_oku($uid) {
-    $f = DATA_DIR . '/state_' . $uid . '.json';
-    if (!file_exists($f)) return null;
-    $j = json_decode(file_get_contents($f), true);
-    return is_array($j) ? $j : null;
-}
-function bekle_sil($uid) {
-    $f = DATA_DIR . '/state_' . $uid . '.json';
-    if (file_exists($f)) @unlink($f);
-}
-
-// ═══════════ ADIM İŞLEME ═══════════
-function adim_isle($cid, $uid, $text, $state) {
-    $text = trim($text);
-    $tip  = $state['tip'];
-    $adim = $state['adim'];
-
-    if ($adim === 'tc') {
-        if (!ctype_digit($text) || strlen($text) != 11) {
-            send($cid, "❌ Geçersiz TC. Tekrar gir:", iptal_menu(), 'HTML');
-            return;
-        }
-        $state['tc'] = $text;
-        bekle_yaz($uid, $state);
-        send($cid, "🔎 <b>" . htmlspecialchars($text) . "</b> sorgulanacak.\n\nOnaylıyor musun?", evet_hayir_menu($tip), 'HTML');
-        return;
-    }
-
-    if ($adim === 'gsm') {
-        $gsm = preg_replace('/\D/', '', $text);
-        if (strlen($gsm) < 10) {
-            send($cid, "❌ Geçersiz GSM. Tekrar gir:", iptal_menu(), 'HTML');
-            return;
-        }
-        $state['gsm'] = $gsm;
-        bekle_yaz($uid, $state);
-        send($cid, "🔎 <b>" . htmlspecialchars($gsm) . "</b> sorgulanacak.\n\nOnaylıyor musun?", evet_hayir_menu($tip), 'HTML');
-        return;
-    }
-
-    if ($adim === 'ad') {
-        if (mb_strlen($text) < 2) {
-            send($cid, "❌ Geçersiz ad. Tekrar gir:", iptal_menu(), 'HTML');
-            return;
-        }
-        $state['ad'] = mb_strtoupper($text, 'UTF-8');
-        bekle_yaz($uid, $state);
-        send($cid, "📝 Soyad gir:", iptal_menu(), 'HTML');
-        $state['adim'] = 'soyad';
-        bekle_yaz($uid, $state);
-        return;
-    }
-
-    if ($adim === 'soyad') {
-        if (mb_strlen($text) < 2) {
-            send($cid, "❌ Geçersiz soyad. Tekrar gir:", iptal_menu(), 'HTML');
-            return;
-        }
-        $state['soyad'] = mb_strtoupper($text, 'UTF-8');
-        bekle_yaz($uid, $state);
-        send($cid,
-            "🔎 <b>" . htmlspecialchars($state['ad'] . ' ' . $state['soyad']) . "</b> sorgulanacak.\n\nOnaylıyor musun?",
-            evet_hayir_menu($tip), 'HTML'
-        );
-        return;
-    }
-
-    if ($adim === 'il') {
-        if (mb_strlen($text) < 2) {
-            send($cid, "❌ Geçersiz il. Tekrar gir:", iptal_menu(), 'HTML');
-            return;
-        }
-        $state['il'] = mb_strtoupper($text, 'UTF-8');
-        $state['adim'] = 'ilce';
-        bekle_yaz($uid, $state);
-        send($cid, "📝 İlçe gir:", iptal_menu(), 'HTML');
-        return;
-    }
-
-    if ($adim === 'ilce') {
-        if (mb_strlen($text) < 2) {
-            send($cid, "❌ Geçersiz ilçe. Tekrar gir:", iptal_menu(), 'HTML');
-            return;
-        }
-        $state['ilce'] = mb_strtoupper($text, 'UTF-8');
-        bekle_yaz($uid, $state);
-        send($cid,
-            "🔎 <b>" . htmlspecialchars($state['il'] . ' / ' . $state['ilce']) . "</b> sorgulanacak.\n\nOnaylıyor musun?",
-            evet_hayir_menu($tip), 'HTML'
-        );
-        return;
-    }
-}
-
-// ═══════════ SORGU ÇALIŞTIR ═══════════
-function sorgu_calistir($cid, $uid, $mid, $state) {
-    $tip = $state['tip'];
-    $u   = get_user($uid);
-    if ($u['kalan'] <= 0) {
-        edit($cid, $mid, "⚠️ Hakkın kalmadı. Referans topla: /ref", ana_menu(), 'HTML');
-        return;
-    }
-
-    // URL kur
-    $url = '';
-    switch ($tip) {
-        case 'tc':        $url = API_BASE . '/tc.php?tc='       . urlencode($state['tc']);        break;
-        case 'tcpro':     $url = API_BASE . '/tcpro.php?tc='    . urlencode($state['tc']);        break;
-        case 'aile':      $url = API_BASE . '/aile.php?tc='     . urlencode($state['tc']);        break;
-        case 'ailepro':   $url = API_BASE . '/ailepro.php?tc='  . urlencode($state['tc']);        break;
-        case 'sulale':    $url = API_BASE . '/sulale.php?tc='   . urlencode($state['tc']);        break;
-        case 'adres':     $url = API_BASE . '/adres.php?tc='    . urlencode($state['tc']);        break;
-        case 'tapu':      $url = API_BASE . '/tapu.php?tc='     . urlencode($state['tc']);        break;
-        case 'eokul':     $url = API_BASE . '/eokul.php?tc='    . urlencode($state['tc']);        break;
-        case 'tcgsm':     $url = API_BASE . '/tcgsm.php?tc='    . urlencode($state['tc']);        break;
-        case 'gsmtc':     $url = API_BASE . '/gsmtc.php?gsm='   . urlencode($state['gsm']) . '&auth=fire'; break;
-        case 'adsoyad':   $url = API_BASE . '/adsoyad.php?ad='  . urlencode($state['ad']) . '&soyad=' . urlencode($state['soyad']); break;
-        case 'adaparsel': $url = API_BASE . '/adaparsel.php?il=' . urlencode($state['il']) . '&ilce=' . urlencode($state['ilce']); break;
-    }
-
-    edit($cid, $mid, "⏳ Sorgulanıyor...", null, 'HTML');
-
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 30,
-        CURLOPT_SSL_VERIFYPEER => false,
-        CURLOPT_USERAGENT      => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        CURLOPT_HTTPHEADER     => ['Accept: application/json'],
-    ]);
-    $body = curl_exec($ch);
+    $res = curl_exec($ch);
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
-
-    if ($code !== 200 || !$body) {
-        edit($cid, $mid, "❌ Sorgu başarısız oldu. Sonra tekrar dene.", ana_menu(), 'HTML');
-        bekle_sil($uid);
-        return;
+    if ($code === 200 && $res) {
+        return json_decode($res, true) ?: null;
     }
+    return null;
+}
 
-    $json = json_decode($body, true);
-    if (!$json) {
-        edit($cid, $mid, "❌ Geçersiz yanıt.", ana_menu(), 'HTML');
-        bekle_sil($uid);
-        return;
-    }
-
-    // Hak düş
-    kalan_dus($uid);
-    bekle_sil($uid);
-
-    $u = get_user($uid);
-    $kalan = $u['kalan'];
-
-    // JSON dosya olarak gönder
-    $filename = DATA_DIR . '/' . $tip . '_' . $uid . '_' . time() . '.json';
-    file_put_contents($filename, json_encode($json, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
-
-    // Telegram'a dosya gönder
-    $ch = curl_init('https://api.telegram.org/bot' . BOT_TOKEN . '/sendDocument');
+function http_post_json($url, $body, $headers = []) {
+    $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => [
-            'chat_id'   => $cid,
-            'document'  => new CURLFile($filename),
-            'caption'   => "✅ <b>Sorgu tamamlandı</b>\n\n" .
-                           "📌 Tip: <b>" . htmlspecialchars($tip) . "</b>\n" .
-                           "🎫 Kalan hak: <b>" . $kalan . "</b>\n\n" .
-                           "📢 @cmrbaskani",
-            'parse_mode'=> 'HTML',
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => json_encode($body),
+        CURLOPT_HTTPHEADER => array_merge($headers, ["Content-Type: application/json"]),
+        CURLOPT_TIMEOUT => 25,
+    ]);
+    $res = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($code === 200 && $res) {
+        return json_decode($res, true) ?: null;
+    }
+    return null;
+}
+
+function dosya_gonder($token, $chat_id, $sonuc, $isim) {
+    if (!$sonuc) {
+        api($token, "sendMessage", [
+            "chat_id" => $chat_id,
+            "text" => "Baktım ama bir şey bulamadım 🤷‍♂️\nBilgileri kontrol edip tekrar dener misin?",
+        ]);
+        return;
+    }
+
+    $yol = sys_get_temp_dir() . "/{$isim}_" . time() . ".json";
+    file_put_contents($yol, json_encode($sonuc, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+    $ch = curl_init("https://api.telegram.org/bot{$token}/sendDocument");
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => [
+            "chat_id" => $chat_id,
+            "caption" => "İşte bulduklarım 📄",
+            "document" => new CURLFile($yol, "application/json", basename($yol)),
         ],
-        CURLOPT_TIMEOUT        => 60,
-        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_TIMEOUT => 60,
     ]);
     curl_exec($ch);
     curl_close($ch);
-    @unlink($filename);
-
-    edit($cid, $mid, "✅ Sorgu tamamlandı.\n\n🎫 Kalan hak: <b>$kalan</b>\n\n👇 Yeni sorgu için menü:", ana_menu(), 'HTML');
+    @unlink($yol);
 }
 
-// ═══════════ KOMUTLAR ═══════════
-function hesap_komut($cid, $uid, $mid = null) {
-    $u = get_user($uid);
-    $metin = "👤 <b>Hesabım</b>\n\n" .
-             "🎫 Bugünkü kalan hak: <b>" . $u['kalan'] . "</b>\n" .
-             "📊 Toplam sorgu: <b>" . ($u['toplam'] ?? 0) . "</b>\n" .
-             "👥 Referans sayısı: <b>" . ($u['ref_sayisi'] ?? 0) . "</b>\n" .
-             "🎁 Referanstan kazanılan: <b>" . ($u['ref_kazanc'] ?? 0) . "</b> hak\n\n" .
-             "🔗 /ref ile davet linkini al.";
-    if ($mid) edit($cid, $mid, $metin, ana_menu(), 'HTML');
-    else       send($cid, $metin, ana_menu(), 'HTML');
+function ana_menu() {
+    return [
+        "inline_keyboard" => [
+            [
+                ["text" => "👤 Kişi Sorgulama", "callback_data" => "menu_kisi"],
+                ["text" => "🔍 Kişi Detay Sorgulama", "callback_data" => "menu_kisidetay"],
+            ],
+            [
+                ["text" => "👨‍👩‍👧 Aile Sorgulama", "callback_data" => "menu_aile"],
+                ["text" => "🌳 Sülale Sorgulama", "callback_data" => "menu_sulale"],
+            ],
+            [
+                ["text" => "📞 TC'den GSM Bulma", "callback_data" => "menu_tcgsm"],
+                ["text" => "📱 GSM'den TC Bulma", "callback_data" => "menu_gsmtc"],
+            ],
+            [
+                ["text" => "🏠 Adres Sorgulama", "callback_data" => "menu_adres"],
+                ["text" => "📜 Tapu Sorgulama", "callback_data" => "menu_tapu"],
+            ],
+            [
+                ["text" => "🗺️ Ada Parsel Sorgulama", "callback_data" => "menu_adaparsel"],
+                ["text" => "🎒 Okul Bilgisi Sorgulama", "callback_data" => "menu_okul"],
+            ],
+            [
+                ["text" => "📇 Ad Soyad ile Arama", "callback_data" => "menu_adsoyad"],
+                ["text" => "🧩 Toplu Sorgulama", "callback_data" => "menu_toplu"],
+            ],
+            [
+                ["text" => "💼 İşyeri Sorgulama", "callback_data" => "menu_isyeri"],
+                ["text" => "🏡 Kişi Tapu Sorgulama", "callback_data" => "menu_tapukisi"],
+            ],
+            [
+                ["text" => "💬 SMS OTP Sorgulama", "callback_data" => "menu_smsotp"],
+                ["text" => "🪙 Binance Sorgulama", "callback_data" => "menu_binance"],
+            ],
+            [
+                ["text" => "🤖 GPT'ye Sor", "callback_data" => "menu_gpt"],
+            ],
+        ],
+    ];
 }
 
-function ref_komut($cid, $uid, $mid = null) {
-    $link = 'https://t.me/' . BOT_USERNAME . '?start=' . $uid;
-    $u = get_user($uid);
-    $metin = "🔗 <b>Referans Sistemi</b>\n\n" .
-             "Davet linkin:\n<code>" . $link . "</code>\n\n" .
-             "🎁 Her katılan kişi için:\n" .
-             "• Sen <b>+3 hak</b> kazanırsın\n" .
-             "• O kişi <b>+3 hak</b> kazanır\n\n" .
-             "👥 Şu ana kadar <b>" . ($u['ref_sayisi'] ?? 0) . "</b> kişi katıldı.\n" .
-             "🎁 Toplam kazanç: <b>" . ($u['ref_kazanc'] ?? 0) . "</b> hak";
-    if ($mid) edit($cid, $mid, $metin, ana_menu(), 'HTML');
-    else       send($cid, $metin, ana_menu(), 'HTML');
+function uye_mi($token, $channel, $uid) {
+    $r = api($token, "getChatMember", ["chat_id" => $channel, "user_id" => $uid]);
+    if (!($r["ok"] ?? false)) return false;
+    $st = $r["result"]["status"] ?? "";
+    return in_array($st, ["member", "administrator", "creator"]);
 }
 
-// ═══════════ WEBHOOK KURULUM ═══════════
-// Bir kez tarayıcıdan aç: sorgubot.php?kur=1
-if (isset($_GET['kur'])) {
-    $webhook_url = 'https://' . $_SERVER['HTTP_HOST'] . $_SERVER['PHP_SELF'];
-    $r = tg('setWebhook', ['url' => $webhook_url]);
-    header('Content-Type: application/json');
-    echo json_encode(['webhook' => $webhook_url, 'result' => $r], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-    exit;
+
+// ─────────────────────────────
+// Sorgu istekleri
+// ─────────────────────────────
+
+function tc_sorgu($tip, $tc, $SRC1, $SRC2, $H) {
+    switch ($tip) {
+        case "kisi":      return http_get("{$SRC1}/tc.php?tc={$tc}", $H);
+        case "kisidetay": return http_get("{$SRC1}/tcpro.php?tc={$tc}", $H);
+        case "aile":      return http_get("{$SRC1}/aile.php?tc={$tc}", $H);
+        case "sulale":    return http_get("{$SRC1}/sulale.php?tc={$tc}", $H);
+        case "adres":     return http_get("{$SRC1}/adres.php?tc={$tc}", $H);
+        case "tapu":      return http_get("{$SRC1}/tapu.php?tc={$tc}", $H);
+        case "okul":      return http_get("{$SRC1}/eokul.php?tc={$tc}", $H);
+        case "toplu":     return http_post_json("{$SRC2}/toplu-sorgu?page=1", ["mod" => "yakin", "tc" => $tc], $H);
+        case "isyeri":    return http_post_json("{$SRC2}/isyeri-sorgu?page=1", ["tc" => $tc], $H);
+        case "tapukisi":  return http_post_json("{$SRC2}/tapu-kisi?page=1", ["tc" => $tc], $H);
+    }
+    return null;
 }
 
-// Webhook bilgisi
-if (isset($_GET['bilgi'])) {
-    header('Content-Type: application/json');
-    echo json_encode(tg('getWebhookInfo'), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-    exit;
+
+// ─────────────────────────────
+// Callback işleyici
+// ─────────────────────────────
+
+function callback_isle($c, $TOKEN, $CHANNEL, $SRC1, $SRC2, $H, $MENU) {
+    $data = $c["data"];
+    $chat_id = $c["message"]["chat"]["id"];
+    $msg_id = $c["message"]["message_id"];
+    $uid = $c["from"]["id"];
+
+    if (!uye_mi($TOKEN, $CHANNEL, $uid)) {
+        api($TOKEN, "sendMessage", [
+            "chat_id" => $chat_id,
+            "text" => "Önce kanala katılman gerek dostum 🙂",
+        ]);
+        return;
+    }
+
+    if ($data === "ana_menu") {
+        $isim = $c["from"]["first_name"] ?? "dostum";
+        api($TOKEN, "editMessageText", [
+            "chat_id" => $chat_id,
+            "message_id" => $msg_id,
+            "text" => "Geri döndün {$isim} 🙂 Ne arayacağını seç.",
+            "reply_markup" => json_encode($MENU),
+        ]);
+        return;
+    }
+
+    $tc_map = [
+        "menu_kisi"      => ["kisi", "Kişi sorgulaması için TC kimlik numarasını yaz (11 hane):", "TC"],
+        "menu_kisidetay" => ["kisidetay", "Detaylı kişi sorgusu için TC kimlik numarasını yaz:", "TC"],
+        "menu_aile"      => ["aile", "Aile sorgusu için TC kimlik numarasını yaz:", "TC"],
+        "menu_sulale"    => ["sulale", "Sülale sorgusu için TC kimlik numarasını yaz:", "TC"],
+        "menu_adres"     => ["adres", "Adres sorgusu için TC kimlik numarasını yaz:", "TC"],
+        "menu_tapu"      => ["tapu", "Tapu sorgusu için TC kimlik numarasını yaz:", "TC"],
+        "menu_okul"      => ["okul", "Okul bilgisi için TC kimlik numarasını yaz:", "TC"],
+        "menu_toplu"     => ["toplu", "Toplu sorgu için TC kimlik numarasını yaz:", "TC"],
+        "menu_isyeri"    => ["isyeri", "İşyeri sorgusu için TC kimlik numarasını yaz:", "TC"],
+        "menu_tapukisi"  => ["tapukisi", "Kişi tapu sorgusu için TC kimlik numarasını yaz:", "TC"],
+        "menu_tcgsm"     => ["tcgsm", "TC'den GSM bulmak için kimlik numarasını yaz:", "TC"],
+        "menu_gsmtc"     => ["gsmtc", "GSM'den TC bulmak için telefon numarasını yaz (5xx xxx xx xx):", "GSM"],
+        "menu_adsoyad"   => ["adsoyad", "Ad soyad ile arama yapacağız. Önce adı yaz:", "AD"],
+        "menu_adaparsel" => ["adaparsel", "Ada parsel sorgusu için ili yaz:", "IL"],
+        "menu_smsotp"    => ["smsotp", "Kaç adet SMS OTP kaydı görmek istersin? (örnek: 50):", "SAYI"],
+        "menu_binance"   => ["binance", "Binance sorgusu için ID (userId) yaz:", "SAYI"],
+        "menu_gpt"       => ["gpt", "GPT'ye ne sormak istiyorsun? Sorunu yaz:", "METIN"],
+    ];
+
+    if (isset($tc_map[$data])) {
+        [$tip, $metin, $beklenen] = $tc_map[$data];
+        api($TOKEN, "editMessageText", [
+            "chat_id" => $chat_id,
+            "message_id" => $msg_id,
+            "text" => $metin,
+        ]);
+
+        // Cevabı bekle
+        $state = sys_get_temp_dir() . "/state_{$uid}.json";
+        file_put_contents($state, json_encode([
+            "step" => $tip,
+            "expect" => $beklenen,
+            "chat_id" => $chat_id,
+            "ts" => time(),
+        ]));
+        return;
+    }
 }
 
-http_response_code(200);
-echo 'OK';
+
+// ─────────────────────────────
+// Adım işleyici (state okuma)
+// ─────────────────────────────
+
+function adim_isle($m, $TOKEN, $SRC1, $SRC2, $H, $SMS_BASE, $BINANCE_BASE, $GPT_BASE, $API_KEY, $DEVICE_ID, $MENU) {
+    $uid = $m["from"]["id"];
+    $chat_id = $m["chat"]["id"];
+    $text = trim($m["text"] ?? "");
+    $state_file = sys_get_temp_dir() . "/state_{$uid}.json";
+
+    if (!file_exists($state_file)) return false;
+
+    $state = json_decode(file_get_contents($state_file), true);
+    if (!$state || (time() - ($state["ts"] ?? 0)) > 300) {
+        @unlink($state_file);
+        return false;
+    }
+
+    $step = $state["step"];
+    $expect = $state["expect"];
+    $answer = $text;
+
+    // Adım adım ek sorular
+    if ($step === "adsoyad" && $expect === "AD") {
+        file_put_contents($state_file, json_encode([
+            "step" => "adsoyad_soyad",
+            "expect" => "SOYAD",
+            "ad" => strtoupper($answer),
+            "chat_id" => $chat_id,
+            "ts" => time(),
+        ]));
+        api($TOKEN, "sendMessage", [
+            "chat_id" => $chat_id,
+            "text" => "Şimdi de soyadı yazar mısın?",
+        ]);
+        return true;
+    }
+
+    if ($step === "adsoyad_soyad") {
+        @unlink($state_file);
+        api($TOKEN, "sendMessage", [
+            "chat_id" => $chat_id,
+            "text" => "Bakıyorum... ⏳",
+        ]);
+        $ad = $state["ad"] ?? "";
+        $soyad = strtoupper($answer);
+        $sonuc = http_get("{$SRC1}/adsoyad.php?ad={$ad}&soyad={$soyad}", $H);
+        dosya_gonder($TOKEN, $chat_id, $sonuc, "adsoyad");
+        return true;
+    }
+
+    if ($step === "adaparsel" && $expect === "IL") {
+        file_put_contents($state_file, json_encode([
+            "step" => "adaparsel_ilce",
+            "expect" => "ILCE",
+            "il" => strtoupper($answer),
+            "chat_id" => $chat_id,
+            "ts" => time(),
+        ]));
+        api($TOKEN, "sendMessage", [
+            "chat_id" => $chat_id,
+            "text" => "İlçeyi de yaz:",
+        ]);
+        return true;
+    }
+
+    if ($step === "adaparsel_ilce") {
+        @unlink($state_file);
+        api($TOKEN, "sendMessage", [
+            "chat_id" => $chat_id,
+            "text" => "Ada parsel kayıtlarına bakıyorum... ⏳",
+        ]);
+        $il = $state["il"] ?? "";
+        $ilce = strtoupper($answer);
+        $sonuc = http_get("{$SRC1}/adaparsel.php?il={$il}&ilce={$ilce}", $H);
+        dosya_gonder($TOKEN, $chat_id, $sonuc, "adaparsel");
+        return true;
+    }
+
+    if ($step === "tcgsm") {
+        @unlink($state_file);
+        if (!ctype_digit($answer) || strlen($answer) !== 11) {
+            api($TOKEN, "sendMessage", ["chat_id" => $chat_id, "text" => "TC 11 haneli olmalı, tekrar dener misin?"]);
+            return true;
+        }
+        api($TOKEN, "sendMessage", ["chat_id" => $chat_id, "text" => "Telefon numarasını arıyorum... ⏳"]);
+        $sonuc = http_get("{$SRC1}/tcgsm.php?tc={$answer}", $H);
+        dosya_gonder($TOKEN, $chat_id, $sonuc, "tcgsm");
+        return true;
+    }
+
+    if ($step === "gsmtc") {
+        @unlink($state_file);
+        $gsm = str_replace(" ", "", $answer);
+        api($TOKEN, "sendMessage", ["chat_id" => $chat_id, "text" => "Bu numaranın sahibine bakıyorum... ⏳"]);
+        $sonuc = http_get("{$SRC1}/gsmtc.php?gsm={$gsm}&auth=fire", $H);
+        dosya_gonder($TOKEN, $chat_id, $sonuc, "gsmtc");
+        return true;
+    }
+
+    if ($step === "smsotp") {
+        @unlink($state_file);
+        if (!ctype_digit($answer)) {
+            api($TOKEN, "sendMessage", ["chat_id" => $chat_id, "text" => "Sayı girmelisin, tekrar dener misin?"]);
+            return true;
+        }
+        api($TOKEN, "sendMessage", ["chat_id" => $chat_id, "text" => "SMS kayıtlarına bakıyorum... ⏳"]);
+        $url = "{$SMS_BASE}?key={$API_KEY}&device_id={$DEVICE_ID}&action=otp&count={$answer}";
+        $sonuc = http_get($url, $H);
+        if (!$sonuc || !($sonuc["success"] ?? false)) {
+            api($TOKEN, "sendMessage", ["chat_id" => $chat_id, "text" => "Servis şu an cevap vermiyor, birazdan tekrar dene."]);
+            return true;
+        }
+        $kayitlar = $sonuc["data"] ?? [];
+        if (!$kayitlar) {
+            api($TOKEN, "sendMessage", ["chat_id" => $chat_id, "text" => "Yeni SMS kaydı yok gibi görünüyor."]);
+            return true;
+        }
+        $i = 1;
+        foreach (array_slice($kayitlar, 0, 10) as $k) {
+            $metin = "📩 **{$i}. SMS**\n"
+                . "Servis: " . ($k["service"] ?? "-") . "\n"
+                . "Ülke: " . ($k["country"] ?? "-") . "\n"
+                . "Telefon: `" . ($k["phone"] ?? "-") . "`\n"
+                . "Kod: `" . ($k["otp"] ?? "-") . "`\n"
+                . "Tarih: " . ($k["date"] ?? "-") . "\n"
+                . "Mesaj: " . mb_substr($k["message"] ?? "", 0, 200);
+            api($TOKEN, "sendMessage", [
+                "chat_id" => $chat_id,
+                "text" => $metin,
+                "parse_mode" => "Markdown",
+            ]);
+            $i++;
+        }
+        if (count($kayitlar) > 10) {
+            api($TOKEN, "sendMessage", [
+                "chat_id" => $chat_id,
+                "text" => "Toplam " . count($kayitlar) . " kayıt var, ilk 10'unu gösterdim.",
+            ]);
+        }
+        return true;
+    }
+
+    if ($step === "binance") {
+        @unlink($state_file);
+        if (!ctype_digit($answer)) {
+            api($TOKEN, "sendMessage", ["chat_id" => $chat_id, "text" => "Binance ID sayı olmalı, tekrar dener misin?"]);
+            return true;
+        }
+        api($TOKEN, "sendMessage", ["chat_id" => $chat_id, "text" => "Binance kaydına bakıyorum... ⏳"]);
+        $url = "{$BINANCE_BASE}?key={$API_KEY}&device_id={$DEVICE_ID}&id={$answer}";
+        $sonuc = http_get($url, $H);
+        if (!$sonuc) {
+            api($TOKEN, "sendMessage", ["chat_id" => $chat_id, "text" => "Servisten cevap gelmedi, birazdan tekrar dene."]);
+            return true;
+        }
+        if (!($sonuc["success"] ?? false) && !($sonuc["ok"] ?? false)) {
+            api($TOKEN, "sendMessage", ["chat_id" => $chat_id, "text" => "Sonuç yok: " . ($sonuc["message"] ?? "Bilinmeyen hata")]);
+            return true;
+        }
+        $metin = "🪙 **Binance Sorgu Sonucu**\n\n";
+        $data = $sonuc["data"] ?? $sonuc["rows"] ?? $sonuc;
+        if (is_array($data) && isset($data[0])) $data = $data[0];
+        if (is_array($data)) {
+            foreach ($data as $k => $v) {
+                if (is_array($v)) $v = json_encode($v, JSON_UNESCAPED_UNICODE);
+                $metin .= "• **{$k}**: {$v}\n";
+            }
+        } else {
+            $metin .= (string)$data;
+        }
+        api($TOKEN, "sendMessage", [
+            "chat_id" => $chat_id,
+            "text" => mb_substr($metin, 0, 4000),
+            "parse_mode" => "Markdown",
+        ]);
+        return true;
+    }
+
+    if ($step === "gpt") {
+        @unlink($state_file);
+        api($TOKEN, "sendMessage", ["chat_id" => $chat_id, "text" => "Düşünüyorum... 🤔"]);
+        $url = "{$GPT_BASE}?key={$API_KEY}&device_id={$DEVICE_ID}&model=pollinations&q=" . urlencode($answer);
+        $sonuc = http_get($url, $H);
+        if (!$sonuc) {
+            api($TOKEN, "sendMessage", ["chat_id" => $chat_id, "text" => "Şu an cevap veremiyorum, birazdan tekrar dene."]);
+            return true;
+        }
+        $cevap = $sonuc["response"] ?? $sonuc["answer"] ?? $sonuc["message"] ?? null;
+        if (is_array($sonuc["data"] ?? null)) $cevap = json_encode($sonuc["data"], JSON_UNESCAPED_UNICODE);
+        if (!$cevap) $cevap = json_encode($sonuc, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        if (mb_strlen($cevap) > 4000) $cevap = mb_substr($cevap, 0, 4000) . "\n\n... (devamı kesildi)";
+        api($TOKEN, "sendMessage", ["chat_id" => $chat_id, "text" => $cevap]);
+        return true;
+    }
+
+    // TC isteyenler
+    if (in_array($step, ["kisi", "kisidetay", "aile", "sulale", "adres", "tapu", "okul", "toplu", "isyeri", "tapukisi"])) {
+        @unlink($state_file);
+        if (!ctype_digit($answer) || strlen($answer) !== 11) {
+            api($TOKEN, "sendMessage", ["chat_id" => $chat_id, "text" => "TC 11 haneli olmalı, tekrar dener misin?"]);
+            return true;
+        }
+        api($TOKEN, "sendMessage", ["chat_id" => $chat_id, "text" => "Bir saniye, bakıyorum... ⏳"]);
+        $sonuc = tc_sorgu($step, $answer, $SRC1, $SRC2, $H);
+        dosya_gonder($TOKEN, $chat_id, $sonuc, $step);
+        return true;
+    }
+
+    @unlink($state_file);
+    return false;
+}
+
+
+// ─────────────────────────────
+// Ana döngü
+// ─────────────────────────────
+
+$offset = 0;
+echo "Bot ayakta 📚\n";
+
+while (true) {
+    $res = api($TOKEN, "getUpdates", ["offset" => $offset, "timeout" => 30]);
+    if (!($res["ok"] ?? false)) {
+        sleep(3);
+        continue;
+    }
+
+    foreach ($res["result"] as $u) {
+        $offset = $u["update_id"] + 1;
+
+        // Callback
+        if (isset($u["callback_query"])) {
+            callback_isle($u["callback_query"], $TOKEN, $CHANNEL, $SRC1, $SRC2, $HEADERS_GET, ana_menu());
+            continue;
+        }
+
+        // Mesaj
+        if (isset($u["message"])) {
+            $m = $u["message"];
+            $text = $m["text"] ?? "";
+            $uid = $m["from"]["id"] ?? 0;
+            $chat_id = $m["chat"]["id"] ?? 0;
+
+            if ($text === "/start" || $text === "/help") {
+                if (!uye_mi($TOKEN, $CHANNEL, $uid)) {
+                    api($TOKEN, "sendMessage", [
+                        "chat_id" => $chat_id,
+                        "text" => "Kapıyı çalmadan giremezsin dostum 🙂\n\n"
+                            . "Önce kanala bir uğra, sonra buraya dön:\n"
+                            . "👉 {$CHANNEL_LINK}\n\n"
+                            . "Geldikten sonra tekrar /start yaz, gerisi kolay.",
+                    ]);
+                    continue;
+                }
+                $isim = $m["from"]["first_name"] ?? "dostum";
+                api($TOKEN, "sendMessage", [
+                    "chat_id" => $chat_id,
+                    "text" => "Selam {$isim} 👋\n\n"
+                        . "Sorgu botuna hoş geldin. Aşağıdaki butonlardan ne arayacağını seç, "
+                        . "gerisini bana bırak. Sonuçları dosya olarak önüne bırakıyorum.\n\n"
+                        . "Takıldığın yer olursa @kehanetsorgu'ya yaz.",
+                    "reply_markup" => json_encode(ana_menu()),
+                ]);
+                continue;
+            }
+
+            // Adım işle
+            adim_isle($m, $TOKEN, $SRC1, $SRC2, $HEADERS_GET, $SMS_BASE, $BINANCE_BASE, $GPT_BASE, $API_KEY, $DEVICE_ID, ana_menu());
+        }
+    }
+}
