@@ -1,0 +1,41 @@
+# Forex Free VDS Bot - Güncellenmiş Gereksinimler
+# Geliştirici: @zanetmez
+
+# Ana kütüphane
+python-telegram-bot==20.8
+
+# HTTP istemcisi (telegram-bot ile uyumlu)
+httpx==0.26.0
+
+# JSON ve veri işleme
+tinydb==4.8.0
+
+# Asenkron işlemler
+aiofiles==24.1.0
+
+# Sistem yönetimi
+psutil==6.1.1
+
+# Web framework (opsiyonel)
+Flask==3.1.1
+Flask-CORS==5.0.0
+
+# API istekleri
+requests==2.32.3
+aiohttp==3.11.10
+
+# Loglama
+loguru==0.7.2
+
+# Veri doğrulama
+pydantic==2.10.3
+orjson==3.10.6
+
+# Environment
+python-dotenv==1.0.1
+
+# Ek araçlar
+click==8.1.7
+colorama==0.4.6
+tqdm==4.67.1
+telebot
