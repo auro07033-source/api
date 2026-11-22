@@ -1,4 +1,8 @@
 <?php
+// Hata raporlamayı kapat
+error_reporting(0);
+ini_set('display_errors', 0);
+
 // CORS ve güvenlik
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
@@ -19,7 +23,7 @@ if (!$type) {
     exit;
 }
 
-// İzin verilen tipler (güvenlik için)
+// İzin verilen tipler
 $allowed = ['tc', 'tcpro', 'adsoyad', 'aile', 'sulale', 'tcgsm', 'gsmtc', 'eokul', 'adres', 'tapu', 'adaparsel'];
 if (!in_array($type, $allowed)) {
     echo json_encode(['error' => 'Geçersiz sorgu tipi']);
@@ -34,18 +38,26 @@ unset($params['type']);
 $target_url = $REAL_API_BASE . $type . '.php?';
 $target_url .= http_build_query($params);
 
-// gsmtc için ekstra auth ekle
 if ($type === 'gsmtc') {
     $target_url .= '&auth=' . $REAL_API_KEY;
 }
 
-// cURL ile istek at
+// cURL ile istek at (Tarayıcı Taklidi)
 $ch = curl_init();
 curl_setopt($ch, CURLOPT_URL, $target_url);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 curl_setopt($ch, CURLOPT_TIMEOUT, 20);
 curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0');
+curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+
+// API'nin proxy engellemesini aşmak için gerçek tarayıcı başlıkları:
+curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+curl_setopt($ch, CURLOPT_HTTPHEADER, [
+    'Accept: application/json, text/plain, */*',
+    'Accept-Language: tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+    'X-Requested-With: XMLHttpRequest',
+    'Referer: https://api.ajaxsystems.fun/' // İsteğin kendi sitelerinden gelmiş gibi görünmesini sağlar
+]);
 
 $response = curl_exec($ch);
 $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -55,6 +67,7 @@ if ($response === false) {
     http_response_code(500);
     echo json_encode(['error' => 'API sunucusuna ulaşılamadı']);
 } else {
+    // API'den dönen HTTP kodunu (200, 403 vb.) aynen iletiyoruz
     http_response_code($http_code);
     echo $response;
 }
