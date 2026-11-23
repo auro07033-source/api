@@ -1,16 +1,17 @@
 <?php
-// turkiye_gov_hava.php - 81 il için 5 günlük hava tahmini
+// havadurumu.php - 81 il 5 günlük hava tahmini, JSON çıktı
 // Kullanım:
-//   php turkiye_gov_hava.php           -> tüm 81 il
-//   php turkiye_gov_hava.php 10        -> sadece Balıkesir
-//   php turkiye_gov_hava.php 6 34 35   -> seçili iller
-//   php turkiye_gov_hava.php --txt     -> sonucu hava.txt dosyasına da yazar
-// Gereksinim: PHP 7.4+, curl ve dom eklentileri
+//   /havadurumu.php?il=34          -> tek il
+//   /havadurumu.php?il=6,34,35     -> birden çok il (virgülle)
+//   /havadurumu.php?il=all         -> 81 il
+// Gereksinim: PHP 7.4+, curl, dom
+
+header('Content-Type: application/json; charset=utf-8');
+header('Access-Control-Allow-Origin: *');
 
 $BASE = "https://www.turkiye.gov.tr";
-$URL  = $BASE . "/5-gunluk-hava-tahmini";
+$URL  = "$BASE/5-gunluk-hava-tahmini";
 
-// Tüm 81 il (plaka kodu => il adı)
 $PLAKA = [
     "1"=>"Adana","2"=>"Adıyaman","3"=>"Afyonkarahisar","4"=>"Ağrı","5"=>"Amasya",
     "6"=>"Ankara","7"=>"Antalya","8"=>"Artvin","9"=>"Aydın","10"=>"Balıkesir",
@@ -40,7 +41,6 @@ $HEADERS = [
     "Connection: close",
 ];
 
-// ---------- Yardımcılar ----------
 function yeni_curl(string $cookiejar) {
     $ch = curl_init();
     curl_setopt_array($ch, [
@@ -75,132 +75,161 @@ function istek_retry($ch, string $method, string $url, array $headers, $postData
     return null;
 }
 
-function token_al($ch, string $url, array $headers): array {
+function token_al($ch, string $url, array $headers): ?string {
     $html = istek_retry($ch, "GET", $url, $headers);
-    if ($html === null) return [null, null];
-    $token = $unique = null;
-    if (preg_match('/data-token=["\']([^"\']+)/', $html, $m))  $token  = $m[1];
-    if (preg_match('/data-unique=["\']([^"\']+)/', $html, $m)) $unique = $m[1];
-    return [$token, $unique];
+    if ($html === null) return null;
+    if (preg_match('/data-token=["\']([^"\']+)/', $html, $m)) return $m[1];
+    return null;
 }
 
 function temizle(string $s): string {
     return trim(preg_replace('/\s+/u', ' ', $s));
 }
 
-function ozetle(string $html): string {
+/**
+ * HTML tablodan günleri ayrıştırıp dizi döndürür.
+ * Çıktı: ["sehir"=>"...", "gunler"=>[ ["gun"=>"Salı","tarih"=>"24 Kasım","durum"=>"...","min"=>6,"max"=>9], ... ]]
+ */
+function parse_tablo(string $html): ?array {
     libxml_use_internal_errors(true);
     $dom = new DOMDocument();
     $dom->loadHTML('<?xml encoding="UTF-8">' . $html);
     libxml_clear_errors();
 
-    $xpath = new DOMXPath($dom);
-    $tablo = $xpath->query("//table[contains(@class,'resultTable')]")->item(0)
-          ?: $xpath->query("//table")->item(0);
-    if (!$tablo) return "[i] Tahmin tablosu bulunamadı.\n";
+    $xp = new DOMXPath($dom);
+    $tablo = $xp->query("//table[contains(@class,'resultTable')]")->item(0)
+          ?: $xp->query("//table")->item(0);
+    if (!$tablo) return null;
 
-    $out = "";
-    $basliklar = [];
-    foreach ($xpath->query(".//th", $tablo) as $th) {
-        $basliklar[] = temizle($th->textContent);
+    // Başlıklar (günler)
+    $gunler = [];
+    foreach ($xp->query(".//thead//th", $tablo) as $th) {
+        $gunler[] = temizle($th->textContent);
     }
-    if ($basliklar) {
-        $out .= implode(" | ", $basliklar) . "\n";
-        $out .= str_repeat("-", 60) . "\n";
-    }
-    foreach ($xpath->query(".//tr", $tablo) as $tr) {
-        $cells = $xpath->query("./td", $tr);
-        if ($cells->length === 0) continue;
+    // İlk başlık "Şehir", kalanlar günler
+    array_shift($gunler);
 
-        $sehir = temizle($cells->item(0)->textContent);
-        $satir = [$sehir];
-        for ($i = 1; $i < $cells->length; $i += 2) {
-            $ikon  = $xpath->query(".//img", $cells->item($i))->item(0);
-            $durum = $ikon ? temizle($ikon->getAttribute("alt")) : "";
-            $detay = ($i+1 < $cells->length) ? temizle($cells->item($i+1)->textContent) : "";
-            $satir[] = "$durum ($detay)";
+    // Veri satırı (tek il)
+    $tr = $xp->query(".//tbody//tr", $tablo)->item(0)
+       ?: $xp->query(".//tr", $tablo)->item(1);
+    if (!$tr) return null;
+
+    $cells = $xp->query("./td", $tr);
+    if ($cells->length < 1) return null;
+
+    $sehir = temizle($cells->item(0)->textContent);
+    $sonuc = [];
+
+    $g = 0;
+    for ($i = 1; $i < $cells->length; $i += 2) {
+        $ikon  = $xp->query(".//img", $cells->item($i))->item(0);
+        $durum = $ikon ? temizle($ikon->getAttribute("alt")) : "";
+
+        $detay = ($i+1 < $cells->length) ? temizle($cells->item($i+1)->textContent) : "";
+        // Örnek: "24 Kasım 6 / 9 °C"
+        $tarih = "";
+        $min = $max = null;
+        if (preg_match('/^(\d+\s+\S+)\s+(-?\d+)\s*\/\s*(-?\d+)/u', $detay, $m)) {
+            $tarih = $m[1];
+            $min   = (int)$m[2];
+            $max   = (int)$m[3];
         }
-        $out .= implode(" | ", $satir) . "\n";
+
+        $sonuc[] = [
+            "gun"   => $gunler[$g] ?? ("Gün " . ($g+1)),
+            "tarih" => $tarih,
+            "durum" => $durum,
+            "min"   => $min,
+            "max"   => $max,
+            "ham"   => $detay,
+        ];
+        $g++;
     }
-    return $out;
+
+    return ["sehir" => $sehir, "gunler" => $sonuc];
 }
 
-// ---------- Ana akış ----------
-$txtYaz = false;
-$args = isset($_GET['il']) ? [$_GET['il']] : [];
+// ---------- Parametre ----------
+$ilParam = $_GET['il'] ?? null;
 
-$cleanArgs = [];
-foreach ($args as $a) {
-    if ($a === "--txt") $txtYaz = true;
-    else $cleanArgs[] = $a;
+if ($ilParam === null || $ilParam === '') {
+    echo json_encode([
+        "success" => false,
+        "message" => "il parametresi gerekli. Örnek: ?il=34 veya ?il=all veya ?il=6,34,35",
+        "kullanilan_plakalar" => array_keys($PLAKA),
+    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    exit;
 }
 
-// Argüman yoksa tüm 81 il
-if (empty($cleanArgs)) {
-    $cleanArgs = array_keys($PLAKA);
-    // Tuşları string yap
-    $cleanArgs = array_map('strval', $cleanArgs);
+if ($ilParam === 'all') {
+    $istekler = array_map('strval', array_keys($PLAKA));
+} else {
+    $istekler = array_filter(array_map('trim', explode(',', $ilParam)), fn($x) => $x !== '');
+    $istekler = array_values($istekler);
 }
 
-$toplam = count($cleanArgs);
-echo "[*] $toplam il sorgulanıyor\n";
-echo "[*] Başlangıç: " . date("H:i:s") . "\n\n";
-
-$cikti = "";
 $baslangic = microtime(true);
+$sonuclar  = [];
+$hatalar   = [];
 
-foreach ($cleanArgs as $idx => $plaka) {
-    $il = $PLAKA[$plaka] ?? "?";
-    $satirBaslik = "=== [$plaka] $il (" . ($idx+1) . "/$toplam) ===";
-    echo $satirBaslik . "\n";
-    $cikti .= $satirBaslik . "\n";
+foreach ($istekler as $plaka) {
+    if (!isset($PLAKA[$plaka])) {
+        $hatalar[] = ["plaka" => $plaka, "hata" => "Geçersiz plaka"];
+        continue;
+    }
 
     $cookiejar = tempnam(sys_get_temp_dir(), "edev_");
     $ch = yeni_curl($cookiejar);
-    $basari = false;
 
     try {
-        [$token, $unique] = token_al($ch, $URL, $HEADERS);
+        $token = token_al($ch, $URL, $HEADERS);
         if (!$token) {
-            $msg = "[-] data-token alınamadı.\n";
-            echo $msg; $cikti .= $msg;
+            $hatalar[] = ["plaka" => $plaka, "hata" => "token alınamadı"];
+            continue;
+        }
+        $post = http_build_query([
+            "il"     => $plaka,
+            "token"  => $token,
+            "il_btn" => "",
+        ]);
+        $postHeaders = array_merge($HEADERS, [
+            "Content-Type: application/x-www-form-urlencoded",
+        ]);
+        $html = istek_retry($ch, "POST", $URL . "?submit", $postHeaders, $post);
+        if ($html === null) {
+            $hatalar[] = ["plaka" => $plaka, "hata" => "POST başarısız"];
+            continue;
+        }
+        $parsed = parse_tablo($html);
+        if ($parsed) {
+            $sonuclar[] = [
+                "plaka" => (int)$plaka,
+                "il"    => $PLAKA[$plaka],
+            ] + $parsed;
         } else {
-            $post = http_build_query(["il"=>$plaka,"token"=>$token,"il_btn"=>""]);
-            $postHeaders = array_merge($HEADERS, [
-                "Content-Type: application/x-www-form-urlencoded",
-            ]);
-            $html = istek_retry($ch, "POST", $URL . "?submit", $postHeaders, $post);
-            if ($html !== null) {
-                $ozet = ozetle($html);
-                echo $ozet; $cikti .= $ozet;
-                $basari = true;
-            } else {
-                $msg = "[-] POST isteği başarısız.\n";
-                echo $msg; $cikti .= $msg;
-            }
+            $hatalar[] = ["plaka" => $plaka, "hata" => "tablo ayrıştırılamadı"];
         }
     } catch (Throwable $e) {
-        $msg = "[-] Hata: " . $e->getMessage() . "\n";
-        echo $msg; $cikti .= $msg;
+        $hatalar[] = ["plaka" => $plaka, "hata" => $e->getMessage()];
     } finally {
         curl_close($ch);
         @unlink($cookiejar);
     }
 
-    echo "\n";
-    $cikti .= "\n";
-
-    // Siteyi yormamak için aralık (son eleman hariç)
-    if ($idx < $toplam - 1) sleep(1);
+    // Siteyi yormamak için aralık
+    if (count($istekler) > 1) sleep(1);
 }
 
-$sure = round(microtime(true) - $baslangic, 1);
-$ozet = "[*] Bitti. Süre: {$sure} sn | Tarih: " . date("Y-m-d H:i:s") . "\n";
-echo $ozet;
-$cikti .= $ozet;
+$sure = round(microtime(true) - $baslangic, 2);
 
-// --txt ile dosyaya yaz
-if ($txtYaz) {
-    file_put_contents(__DIR__ . "/hava.txt", $cikti);
-    echo "[*] Sonuç: " . __DIR__ . "/hava.txt\n";
-}
+echo json_encode([
+    "success"      => true,
+    "kaynak"       => $URL,
+    "sorgu_sayisi" => count($istekler),
+    "basarili"     => count($sonuclar),
+    "hatali"       => count($hatalar),
+    "sure_sn"      => $sure,
+    "tarih"        => date("Y-m-d H:i:s"),
+    "sonuclar"     => $sonuclar,
+    "hatalar"      => $hatalar,
+], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
