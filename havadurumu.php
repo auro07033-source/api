@@ -127,7 +127,7 @@ function ozetle(string $html): string {
 
 // ---------- Ana akış ----------
 $txtYaz = false;
-$args = array_slice($argv, 1);
+$args = isset($_GET['il']) ? [$_GET['il']] : [];
 
 $cleanArgs = [];
 foreach ($args as $a) {
