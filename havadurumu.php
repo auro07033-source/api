@@ -224,7 +224,6 @@ $sure = round(microtime(true) - $baslangic, 2);
 
 echo json_encode([
     "success"      => true,
-    "kaynak"       => $URL,
     "sorgu_sayisi" => count($istekler),
     "basarili"     => count($sonuclar),
     "hatali"       => count($hatalar),
