@@ -1,19 +1,24 @@
 <?php
-// notrack_api.php - notrack.ai sohbet API proxy (PHP)
+// gpt.php - notrack.ai sohbet API proxy (PHP, chat_id + gecikme + 429 retry)
 // Kullanım:
-//   GET/POST /notrack_api.php?mesaj=Merhaba
-//   GET/POST /notrack_api.php?mesaj=Devam&chat_id=xxxxx
-//   ?stream=1  -> SSE (text/event-stream) olarak canlı akıtır
+//   /gpt.php?mesaj=Merhaba
+//   /gpt.php?mesaj=Devam&chat_id=abc123
+//   /gpt.php?mesaj=Merhaba&stream=1  (SSE canlı akış)
 // Gereksinim: PHP 7.4+, curl
 
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Headers: Content-Type');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') { http_response_code(204); exit; }
 
 $mesaj   = $_POST['mesaj']   ?? $_GET['mesaj']   ?? null;
 $chat_id = $_POST['chat_id'] ?? $_GET['chat_id'] ?? null;
 $stream  = isset($_GET['stream']) && $_GET['stream'] === '1';
+
+// Aynı IP'den hızlı istekleri yumuşat (dosya tabanlı)
+$ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+$ip = trim(explode(',', $ip)[0]);
+$lockFile = sys_get_temp_dir() . "/notrack_" . md5($ip) . ".lock";
 
 if ($mesaj === null || trim($mesaj) === '') {
     header('Content-Type: application/json; charset=utf-8');
@@ -21,9 +26,21 @@ if ($mesaj === null || trim($mesaj) === '') {
         "success" => false,
         "message" => "mesaj parametresi gerekli",
         "ornek"   => "?mesaj=Merhaba",
+        "gelistirici" => "@ittizar",
     ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
     exit;
 }
+
+// 3 sn minimum aralık
+$MIN_INTERVAL = 3;
+if (file_exists($lockFile)) {
+    $son = (int)@file_get_contents($lockFile);
+    $fark = time() - $son;
+    if ($fark < $MIN_INTERVAL) {
+        sleep($MIN_INTERVAL - $fark);
+    }
+}
+@file_put_contents($lockFile, time());
 
 $URL = "https://notrack.ai/api/dispatch";
 
@@ -45,6 +62,10 @@ $COOKIES = [
     "uid"       => "10133feb-1a97-4359-b418-b25e25a1f30d",
 ];
 
+$cookieStr = [];
+foreach ($COOKIES as $k => $v) $cookieStr[] = "$k=$v";
+$cookieStr = implode("; ", $cookieStr);
+
 $payload = [
     "user_input"  => $mesaj,
     "mode"        => "usual",
@@ -59,26 +80,33 @@ $payload = [
     "via"         => "typed",
 ];
 
-$cookieStr = [];
-foreach ($COOKIES as $k => $v) $cookieStr[] = "$k=$v";
-$cookieStr = implode("; ", $cookieStr);
+// ---- İstek fonksiyonu (429/5xx için 3 kez yeniden dener) ----
+function notrack_post($URL, $HEADERS, $cookieStr, $payload, $stream = false) {
+    $ch = curl_init($URL);
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => json_encode($payload),
+        CURLOPT_HTTPHEADER     => array_merge($HEADERS, ["Cookie: $cookieStr"]),
+        CURLOPT_RETURNTRANSFER => !$stream,
+        CURLOPT_TIMEOUT        => 60,
+        CURLOPT_CONNECTTIMEOUT => 15,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => false,
+        CURLOPT_ENCODING       => "",
+    ]);
+    if ($stream) {
+        return $ch; // akış için doğrudan handle
+    }
+    $body = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err  = curl_error($ch);
+    curl_close($ch);
+    return [$body, $code, $err];
+}
 
-// ---- İstek hazırla ----
-$ch = curl_init($URL);
-curl_setopt_array($ch, [
-    CURLOPT_POST           => true,
-    CURLOPT_POSTFIELDS     => json_encode($payload),
-    CURLOPT_HTTPHEADER     => array_merge($HEADERS, ["Cookie: $cookieStr"]),
-    CURLOPT_RETURNTRANSFER => !$stream,
-    CURLOPT_TIMEOUT        => 60,
-    CURLOPT_CONNECTTIMEOUT => 15,
-    CURLOPT_SSL_VERIFYPEER => false,
-    CURLOPT_SSL_VERIFYHOST => false,
-    CURLOPT_ENCODING       => "",
-]);
-
+// ---- STREAM MODU ----
 if ($stream) {
-    // SSE olarak canlı akıt
+    // 429 kontrolü için önce hafif bir probe yapılabilir; basit tutmak için doğrudan akış
     header('Content-Type: text/event-stream; charset=utf-8');
     header('Cache-Control: no-cache');
     header('X-Accel-Buffering: no');
@@ -88,17 +116,24 @@ if ($stream) {
     $yeni_chat_id = null;
     $buffer = "";
 
+    $ch = curl_init($URL);
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => json_encode($payload),
+        CURLOPT_HTTPHEADER     => array_merge($HEADERS, ["Cookie: $cookieStr"]),
+        CURLOPT_TIMEOUT        => 60,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => false,
+        CURLOPT_ENCODING       => "",
+    ]);
     curl_setopt($ch, CURLOPT_WRITEFUNCTION, function($ch, $chunk) use (&$buffer, &$yeni_chat_id) {
         $buffer .= $chunk;
-
         while (($pos = strpos($buffer, "\n")) !== false) {
             $line = substr($buffer, 0, $pos);
             $buffer = substr($buffer, $pos + 1);
             $line = rtrim($line, "\r");
-
-            if ($line === '' || strpos($line, "data: ") !== 0) continue;
-            $jsonStr = substr($line, 6);
-            $data = json_decode($jsonStr, true);
+            if (strpos($line, "data: ") !== 0) continue;
+            $data = json_decode(substr($line, 6), true);
             if (!is_array($data)) continue;
 
             if (($data['type'] ?? '') === 'chat_meta' && !$yeni_chat_id) {
@@ -107,46 +142,51 @@ if ($stream) {
                 echo "data: " . json_encode(["chat_id" => $yeni_chat_id], JSON_UNESCAPED_UNICODE) . "\n\n";
                 @flush();
             }
-
             if (($data['type'] ?? '') === 'message' && ($data['speaker'] ?? '') === 'C') {
                 echo "event: message\n";
-                echo "data: " . json_encode([
-                    "content" => $data['content'] ?? ''
-                ], JSON_UNESCAPED_UNICODE) . "\n\n";
+                echo "data: " . json_encode(["content" => $data['content'] ?? ''], JSON_UNESCAPED_UNICODE) . "\n\n";
                 @flush();
             }
         }
         return strlen($chunk);
     });
-
     curl_exec($ch);
-    $err = curl_error($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err  = curl_error($ch);
     curl_close($ch);
 
     echo "event: done\n";
     echo "data: " . json_encode([
-        "success"   => $err === "",
-        "chat_id"   => $yeni_chat_id,
-        "error"     => $err ?: null,
+        "success"     => ($code === 200 && $err === ""),
+        "http"        => $code,
+        "chat_id"     => $yeni_chat_id,
+        "error"       => $err ?: null,
         "gelistirici" => "@ittizar",
     ], JSON_UNESCAPED_UNICODE) . "\n\n";
     exit;
 }
 
-// ---- Stream yok: tüm yanıtı topla ----
-$body = curl_exec($ch);
-$code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$err  = curl_error($ch);
-curl_close($ch);
-
+// ---- NORMAL MOD (429/5xx retry) ----
 header('Content-Type: application/json; charset=utf-8');
+
+$body = null; $code = 0; $err = "";
+for ($i = 0; $i < 3; $i++) {
+    [$body, $code, $err] = notrack_post($URL, $HEADERS, $cookieStr, $payload, false);
+    if ($code === 200) break;
+    if (in_array($code, [429, 500, 502, 503, 504], true)) {
+        sleep(5 * ($i + 1)); // 5, 10, 15 sn bekle
+        continue;
+    }
+    break;
+}
 
 if ($body === false || $code !== 200) {
     echo json_encode([
-        "success" => false,
-        "message" => "notrack.ai yanıt vermedi",
-        "http"    => $code,
-        "error"   => $err,
+        "success"     => false,
+        "message"     => $code === 429 ? "notrack.ai rate limit (429). Daha sonra dene." : "notrack.ai yanıt vermedi",
+        "http"        => $code,
+        "error"       => $err,
+        "gelistirici" => "@ittizar",
     ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
     exit;
 }
@@ -156,8 +196,7 @@ $icerik = "";
 foreach (explode("\n", $body) as $line) {
     $line = rtrim($line, "\r");
     if (strpos($line, "data: ") !== 0) continue;
-    $jsonStr = substr($line, 6);
-    $data = json_decode($jsonStr, true);
+    $data = json_decode(substr($line, 6), true);
     if (!is_array($data)) continue;
 
     if (($data['type'] ?? '') === 'chat_meta' && !$yeni_chat_id) {
