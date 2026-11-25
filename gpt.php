@@ -1,9 +1,9 @@
 <?php
-// claila.php - Claila AI sohbet proxy (PHP)
+// gpt.php - notrack.ai sohbet proxy (otomatik oturum yenileme + çerez havuzu)
 // Kullanım:
-//   /claila.php?mesaj=Merhaba
-//   /claila.php?mesaj=Devam&session=1795587006
-//   /claila.php?mesaj=Merhaba&stream=1   (SSE canlı akış)
+//   /gpt.php?mesaj=Merhaba
+//   /gpt.php?mesaj=Devam&chat_id=abc123
+//   /gpt.php?mesaj=Merhaba&stream=1
 // Gereksinim: PHP 7.4+, curl
 
 header('Access-Control-Allow-Origin: *');
@@ -12,7 +12,7 @@ header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') { http_response_code(204); exit; }
 
 $mesaj   = $_POST['mesaj']   ?? $_GET['mesaj']   ?? null;
-$session = $_POST['session'] ?? $_GET['session'] ?? null;
+$chat_id = $_POST['chat_id'] ?? $_GET['chat_id'] ?? null;
 $stream  = isset($_GET['stream']) && $_GET['stream'] === '1';
 
 if ($mesaj === null || trim($mesaj) === '') {
@@ -26,75 +26,172 @@ if ($mesaj === null || trim($mesaj) === '') {
     exit;
 }
 
-$session = $session ?: (string)time();
+// Hız sınırı: aynı IP'den 3 sn'de bir
+$ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+$ip = trim(explode(',', $ip)[0]);
+$lock = sys_get_temp_dir() . "/notrack_" . md5($ip) . ".lock";
+if (file_exists($lock)) {
+    $fark = time() - (int)@file_get_contents($lock);
+    if ($fark < 3) sleep(3 - $fark);
+}
+@file_put_contents($lock, time());
 
-$API = "https://app.claila.com/api/v2/aichat31";
+$API  = "https://notrack.ai/api/dispatch";
+$PAGE = "https://notrack.ai/tr/chat";
 
-$HEADERS = [
+$HEADERS_BASE = [
     "User-Agent: Mozilla/5.0 (Android 15; Mobile; rv:159.0) Gecko/159.0 Firefox/159.0",
     "Accept: */*",
     "Accept-Language: tr-TR",
-    "Content-Type: application/x-www-form-urlencoded; charset=UTF-8",
-    "X-CSRF-Token: 055b231c06218424884b26fde740d9335fa42adcaeed753174c7e1b36b59abe8",
-    "X-Requested-With: XMLHttpRequest",
-    "Origin: https://app.claila.com",
-    "Referer: https://app.claila.com/chat?lang=tr&autostart=1&prompt=" . urlencode(mb_substr($mesaj, 0, 30)),
+    "Sec-Fetch-Dest: empty",
+    "Sec-Fetch-Mode: cors",
+    "Sec-Fetch-Site: same-origin",
 ];
 
-$COOKIES = [
-    "dmcfkjn3cdc"       => "e106p3a7ol7ebmboosmjm8pq57",
-    "claila_fcm_first"  => "1795586962",
-    "_ct_uid"           => "cd4d18846e76cac2c4d3bb51e559428e",
-    "_fl_sid"           => "6677e0c654a297f026c31613dbe8a6d5",
-    "fs_ux"             => "edd78d80-2d1b-454f-9cad-b28d2be07ff0",
-    "lang"              => "tr",
-    "claila_lens_ok"    => "0",
-    "claila_anon"       => "ff40a39c8dc83486b71e5446fd65e5bf8558002f37234d2c2e9bfedc003f0b23",
-    "theme"             => "dark",
+// Çerez havuzu: tarayıcıdan aldığın değerleri buraya ekle.
+// Yenisi eskisini geçersiz kılmaz, sırayla denenir; ilk çalışan kullanılır.
+$COOKIE_POOL = [
+    // 1. set (mevcut)
+    [
+        "si_usr_id" => "1795395693-v-j4QULqTYbSSCcRQR1dg7",
+        "si_ses_id" => "1795395693-v-j4QULqTYbSSCcRQR1dg7",
+        "uid"       => "10133feb-1a97-4359-b418-b25e25a1f30d",
+    ],
+    // 2. set örneği (tarayıcıdan alıp doldur)
+    // [
+    //     "si_usr_id" => "...",
+    //     "si_ses_id" => "...",
+    //     "uid"       => "...",
+    // ],
 ];
-$cookieStr = [];
-foreach ($COOKIES as $k => $v) $cookieStr[] = "$k=$v";
-$cookieStr = implode("; ", $cookieStr);
 
-$POST = http_build_query([
-    "model"         => "claila",
-    "response_mode" => "auto",
-    "message"       => $mesaj,
-    "sessionId"     => $session,
-    "chat_mode"     => "chat",
-    "websearch"     => "false",
-    "tmp_enabled"   => "0",
-]);
+// ---- Oturum açma: GET /chat → Set-Cookie topla ----
+function oturum_al($PAGE, $HEADERS_BASE) {
+    $jar = tempnam(sys_get_temp_dir(), "nt_ck_");
+    $ch = curl_init($PAGE);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_TIMEOUT        => 20,
+        CURLOPT_CONNECTTIMEOUT => 10,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => false,
+        CURLOPT_ENCODING       => "",
+        CURLOPT_HTTPHEADER     => $HEADERS_BASE,
+        CURLOPT_COOKIEJAR      => $jar,
+        CURLOPT_COOKIEFILE     => $jar,
+    ]);
+    $body = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
 
-// --- Herhangi bir JSON'dan metin çıkar (derin tarama) ---
-function json_metin_bul($j) {
-    if (is_string($j)) return $j;
-    if (!is_array($j)) return null;
-
-    // Öncelik sırası: yaygın alanlar
-    $oncelikli = ["response","message","content","text","answer","output","delta","completion","reply","result"];
-    foreach ($oncelikli as $a) {
-        if (isset($j[$a])) {
-            $v = json_metin_bul($j[$a]);
-            if (is_string($v) && trim($v) !== '') return $v;
-        }
-    }
-    // OpenAI tarzı: choices[0].delta.content / choices[0].message.content
-    if (isset($j['choices'][0]) && is_array($j['choices'][0])) {
-        $c = $j['choices'][0];
-        foreach (["delta","message"] as $k) {
-            if (isset($c[$k]['content'])) {
-                $v = $c[$k]['content'];
-                if (is_string($v) && trim($v) !== '') return $v;
+    // Cookie jar dosyasından çerezleri oku
+    $cerezler = [];
+    if ($jar && file_exists($jar)) {
+        foreach (file($jar, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $satir) {
+            if ($satir[0] === '#' || substr_count($satir, "\t") < 6) continue;
+            $p = explode("\t", $satir);
+            if (count($p) >= 7) {
+                $ad = trim($p[5]);
+                $deger = trim($p[6]);
+                if ($ad !== '' && $deger !== '') $cerezler[$ad] = $deger;
             }
         }
+        @unlink($jar);
     }
-    // Dizinin herhangi bir string elemanı
-    foreach ($j as $v) {
-        $r = json_metin_bul($v);
-        if (is_string($r) && trim($r) !== '') return $r;
+    return [$cerezler, $code, $body];
+}
+
+// ---- POST dispatch ----
+function dispatch($API, $HEADERS_BASE, $cerezler, $payload) {
+    $cookieStr = [];
+    foreach ($cerezler as $k => $v) $cookieStr[] = "$k=$v";
+    $cookieStr = implode("; ", $cookieStr);
+
+    $ch = curl_init($API);
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => json_encode($payload),
+        CURLOPT_HTTPHEADER     => array_merge($HEADERS_BASE, [
+            "Content-Type: application/json",
+            "Referer: https://notrack.ai/tr/chat",
+            "Origin: https://notrack.ai",
+            "Cookie: $cookieStr",
+        ]),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 60,
+        CURLOPT_CONNECTTIMEOUT => 15,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => false,
+        CURLOPT_ENCODING       => "",
+    ]);
+    $body = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err  = curl_error($ch);
+    curl_close($ch);
+    return [$body, $code, $err];
+}
+
+// ---- HTML tespiti (oturum düşmüşse HTML döner) ----
+function html_mi($body) {
+    if (!is_string($body)) return true;
+    $b = ltrim(substr($body, 0, 30));
+    return stripos($b, '<!DOCTYPE') === 0 || stripos($b, '<html') === 0 || stripos($b, '<?xml') === 0;
+}
+
+// ---- Çerez sırası: havuzdakiler + sonradan taze alınanlar ----
+$cerezAdaylari = $COOKIE_POOL;
+
+// Ekstra: bu istek için taze GET oturumu da dene
+[$taze, $gcode, $gbody] = oturum_al($PAGE, $HEADERS_BASE);
+if (!empty($taze)) {
+    $cerezAdaylari[] = $taze;
+}
+
+$payloadBase = [
+    "user_input"  => $mesaj,
+    "mode"        => "usual",
+    "model"       => "C",
+    "persona"     => "normal",
+    "max_turns"   => 6,
+    "chat_id"     => $chat_id,
+    "attachments" => [],
+    "regenerate"  => false,
+    "edit"        => false,
+    "edit_mid"    => null,
+    "via"         => "typed",
+];
+
+// ---- Deneme döngüsü: her çerez setiyle bir kez, 429'da bekle ----
+$sonBody = null; $sonCode = 0; $sonErr = ""; $kullanilanCerez = null;
+$maxDeneme = max(count($cerezAdaylari), 1) + 2;
+
+for ($i = 0; $i < $maxDeneme; $i++) {
+    $cerez = $cerezAdaylari[$i % max(count($cerezAdaylari), 1)] ?? null;
+    if (!$cerez) {
+        // Sıra bitti, tekrar taze al
+        [$cerez, $_, $__] = oturum_al($PAGE, $HEADERS_BASE);
+        if (empty($cerez)) break;
     }
-    return null;
+
+    [$body, $code, $err] = dispatch($API, $HEADERS_BASE, $cerez, $payloadBase);
+    $sonBody = $body; $sonCode = $code; $sonErr = $err;
+
+    // HTML döndüyse bu çerez ölü, sıradakine geç
+    if ($code === 200 && !html_mi($body)) {
+        $kullanilanCerez = $cerez;
+        break;
+    }
+    if ($code === 429) {
+        sleep(5 * (($i % 3) + 1));
+        continue;
+    }
+    // 401/403/419 → sıradaki çerez
+    if (in_array($code, [401, 403, 419], true)) continue;
+    // HTML 200 → sıradaki çerez
+    if ($code === 200 && html_mi($body)) continue;
+    // Diğer hatalar → kır
+    break;
 }
 
 // ---- STREAM ----
@@ -105,62 +202,41 @@ if ($stream) {
     @ob_end_flush();
     @ob_implicit_flush(true);
 
-    $buffer = "";
-    $yeniSession = $session;
+    if ($sonBody === null || $sonCode !== 200 || html_mi($sonBody)) {
+        echo "event: error\n";
+        echo "data: " . json_encode([
+            "success"     => false,
+            "message"     => "notrack.ai oturumu açılamadı",
+            "http"        => $sonCode,
+            "gelistirici" => "@ittizar",
+        ], JSON_UNESCAPED_UNICODE) . "\n\n";
+        exit;
+    }
 
-    $ch = curl_init($API);
-    curl_setopt_array($ch, [
-        CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => $POST,
-        CURLOPT_HTTPHEADER     => array_merge($HEADERS, ["Cookie: $cookieStr"]),
-        CURLOPT_TIMEOUT        => 60,
-        CURLOPT_SSL_VERIFYPEER => false,
-        CURLOPT_SSL_VERIFYHOST => false,
-        CURLOPT_ENCODING       => "",
-    ]);
-    curl_setopt($ch, CURLOPT_WRITEFUNCTION, function($ch, $chunk) use (&$buffer, &$yeniSession) {
-        $buffer .= $chunk;
-        while (($pos = strpos($buffer, "\n")) !== false) {
-            $line = substr($buffer, 0, $pos);
-            $buffer = substr($buffer, $pos + 1);
-            $line = rtrim($line, "\r");
-
-            if (strpos($line, "data:") === 0) {
-                $gövde = ltrim(substr($line, 5));
-                if ($gövde === '' || $gövde === '[DONE]') continue;
-                $j = json_decode($gövde, true);
-                if (is_array($j)) {
-                    $yeniSession = (string)($j['sessionId'] ?? $j['session_id'] ?? $yeniSession);
-                    $m = json_metin_bul($j);
-                    if ($m !== null) {
-                        echo "event: message\n";
-                        echo "data: " . json_encode(["content" => $m], JSON_UNESCAPED_UNICODE) . "\n\n";
-                        @flush();
-                    }
-                } else {
-                    echo "event: message\n";
-                    echo "data: " . json_encode(["content" => $gövde], JSON_UNESCAPED_UNICODE) . "\n\n";
-                    @flush();
-                }
-            } else if ($line !== '' && strpos($line, "event:") !== 0) {
-                echo "event: message\n";
-                echo "data: " . json_encode(["content" => $line], JSON_UNESCAPED_UNICODE) . "\n\n";
-                @flush();
-            }
+    // Son başarılı yanıt zaten elimizde; satır satır SSE'ye aktar
+    $yeni = null;
+    foreach (explode("\n", $sonBody) as $line) {
+        $line = rtrim($line, "\r");
+        if (strpos($line, "data: ") !== 0) continue;
+        $d = json_decode(substr($line, 6), true);
+        if (!is_array($d)) continue;
+        if (($d['type'] ?? '') === 'chat_meta' && !$yeni) {
+            $yeni = $d['chat_id'] ?? null;
+            echo "event: chat_id\n";
+            echo "data: " . json_encode(["chat_id" => $yeni], JSON_UNESCAPED_UNICODE) . "\n\n";
+            @flush();
         }
-        return strlen($chunk);
-    });
-    curl_exec($ch);
-    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $err  = curl_error($ch);
-    curl_close($ch);
+        if (($d['type'] ?? '') === 'message' && ($d['speaker'] ?? '') === 'C') {
+            echo "event: message\n";
+            echo "data: " . json_encode(["content" => $d['content'] ?? ''], JSON_UNESCAPED_UNICODE) . "\n\n";
+            @flush();
+        }
+    }
 
     echo "event: done\n";
     echo "data: " . json_encode([
-        "success"     => ($code === 200 && $err === ""),
-        "http"        => $code,
-        "session"     => $yeniSession,
-        "error"       => $err ?: null,
+        "success"     => true,
+        "chat_id"     => $yeni,
         "gelistirici" => "@ittizar",
     ], JSON_UNESCAPED_UNICODE) . "\n\n";
     exit;
@@ -169,115 +245,36 @@ if ($stream) {
 // ---- NORMAL ----
 header('Content-Type: application/json; charset=utf-8');
 
-$ch = curl_init($API);
-curl_setopt_array($ch, [
-    CURLOPT_POST           => true,
-    CURLOPT_POSTFIELDS     => $POST,
-    CURLOPT_HTTPHEADER     => array_merge($HEADERS, ["Cookie: $cookieStr"]),
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_TIMEOUT        => 60,
-    CURLOPT_CONNECTTIMEOUT => 15,
-    CURLOPT_SSL_VERIFYPEER => false,
-    CURLOPT_SSL_VERIFYHOST => false,
-    CURLOPT_ENCODING       => "",
-]);
-$body = curl_exec($ch);
-$code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$err  = curl_error($ch);
-curl_close($ch);
-
-if ($body === false || $code !== 200) {
+if ($sonBody === false || $sonCode !== 200 || html_mi($sonBody)) {
     echo json_encode([
         "success"     => false,
-        "message"     => "claila yanıt vermedi",
-        "http"        => $code,
-        "error"       => $err,
+        "message"     => "notrack.ai oturumu açılamadı (HTML veya hata döndü)",
+        "http"        => $sonCode,
+        "error"       => $sonErr,
+        "ham_bas"     => is_string($sonBody) ? substr($sonBody, 0, 300) : null,
         "gelistirici" => "@ittizar",
     ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
     exit;
 }
 
-$hamYanit = $body;
-
-// 1) Tümü JSON ise derin tarama
-$j = json_decode($body, true);
-if (is_array($j)) {
-    $cevap = json_metin_bul($j) ?? "";
-    $yeniSession = (string)($j['sessionId'] ?? $j['session_id'] ?? $session);
-
-    $cikti = [
-        "success"     => true,
-        "gelistirici" => "@ittizar",
-        "session"     => $yeniSession,
-        "cevap"       => trim($cevap),
-    ];
-    if (trim($cevap) === '') {
-        $cikti["uyari"] = "cevap boş, JSON yapısı tanınmadı";
-        $cikti["ham_yanit"] = substr($hamYanit, 0, 2000);
-    }
-    echo json_encode($cikti, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-    exit;
-}
-
-// 2) SSE / düz metin parse (buffer'lı)
-$parcalar = [];
-$yeniSession = $session;
-$sseBuffer = "";
-
-foreach (preg_split('/\r\n|\r|\n/', $body) as $line) {
+$yeniChatId = null;
+$icerik = "";
+foreach (explode("\n", $sonBody) as $line) {
     $line = rtrim($line, "\r");
-    if ($line === '') continue;
-
-    if (strpos($line, "event:") === 0) continue;
-
-    if (strpos($line, "data:") === 0) {
-        $gövde = ltrim(substr($line, 5));
-        if ($gövde === '' || $gövde === '[DONE]') continue;
-
-        // Bölünmüş JSON desteği
-        $sseBuffer .= $gövde;
-        $jj = json_decode($sseBuffer, true);
-        if (is_array($jj)) {
-            $yeniSession = (string)($jj['sessionId'] ?? $jj['session_id'] ?? $yeniSession);
-            $m = json_metin_bul($jj);
-            if ($m !== null) $parcalar[] = $m;
-            $sseBuffer = "";
-        }
-        continue;
+    if (strpos($line, "data: ") !== 0) continue;
+    $d = json_decode(substr($line, 6), true);
+    if (!is_array($d)) continue;
+    if (($d['type'] ?? '') === 'chat_meta' && !$yeniChatId) {
+        $yeniChatId = $d['chat_id'] ?? null;
     }
-
-    // Düz metin satırı (JSON olabilir)
-    $jj = json_decode($line, true);
-    if (is_array($jj)) {
-        $yeniSession = (string)($jj['sessionId'] ?? $jj['session_id'] ?? $yeniSession);
-        $m = json_metin_bul($jj);
-        if ($m !== null) $parcalar[] = $m;
-    } else {
-        $parcalar[] = $line;
+    if (($d['type'] ?? '') === 'message' && ($d['speaker'] ?? '') === 'C') {
+        $icerik .= ($d['content'] ?? '');
     }
 }
 
-// Buffer'da kalan
-if ($sseBuffer !== "") {
-    $jj = json_decode($sseBuffer, true);
-    if (is_array($jj)) {
-        $m = json_metin_bul($jj);
-        if ($m !== null) $parcalar[] = $m;
-    }
-}
-
-$cevap = trim(implode("", $parcalar));
-
-$cikti = [
+echo json_encode([
     "success"     => true,
     "gelistirici" => "@ittizar",
-    "session"     => $yeniSession,
-    "cevap"       => $cevap,
-];
-
-if ($cevap === '') {
-    $cikti["uyari"] = "cevap boş, ham_yanit içine bak";
-    $cikti["ham_yanit"] = substr($hamYanit, 0, 2000);
-}
-
-echo json_encode($cikti, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    "chat_id"     => $yeniChatId,
+    "cevap"       => trim($icerik),
+], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
