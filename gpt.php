@@ -1,21 +1,20 @@
 <?php
-// chatgpt4online.php - chatgpt4online.org (mwai) sohbet proxy (PHP)
+// gptfree.php - gptfree.com agent_stream proxy (PHP)
 // Kullanım:
-//   /chatgpt4online.php?mesaj=Merhaba
-//   /chatgpt4online.php?mesaj=Devam&chat_id=3t5591dr4z8&session=xxx&context_id=58
-//   /chatgpt4online.php?mesaj=Merhaba&stream=1  (SSE)
+//   /gptfree.php?mesaj=Merhaba
+//   /gptfree.php?mesaj=Devam&history=[{"role":"user","content":"..."},{"role":"assistant","content":"..."}]
+//   /gptfree.php?mesaj=Merhaba&stream=1
 // Gereksinim: PHP 7.4+, curl
+// Not: Bearer token ~1 saat geçerli. 401 alırsan gptfree.com'dan tazele.
 
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Headers: Content-Type');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') { http_response_code(204); exit; }
 
-$mesaj      = $_POST['mesaj']      ?? $_GET['mesaj']      ?? null;
-$chat_id    = $_POST['chat_id']    ?? $_GET['chat_id']    ?? null;
-$session    = $_POST['session']    ?? $_GET['session']    ?? "3c006c48df0abf79d521092536147ab9";
-$context_id = $_POST['context_id'] ?? $_GET['context_id'] ?? 58;
-$stream     = isset($_GET['stream']) && $_GET['stream'] === '1';
+$mesaj   = $_POST['mesaj']   ?? $_GET['mesaj']   ?? null;
+$history = $_POST['history'] ?? $_GET['history'] ?? "[]";
+$stream  = isset($_GET['stream']) && $_GET['stream'] === '1';
 
 if ($mesaj === null || trim($mesaj) === '') {
     header('Content-Type: application/json; charset=utf-8');
@@ -28,49 +27,39 @@ if ($mesaj === null || trim($mesaj) === '') {
     exit;
 }
 
-$API = "https://chatgpt4online.org/wp-json/mwai-ui/v1/chats/submit";
+// history: JSON string veya dizi
+if (is_string($history)) {
+    $historyArr = json_decode($history, true);
+    if (!is_array($historyArr)) $historyArr = [];
+} else {
+    $historyArr = $history;
+}
 
-// X-WP-Nonce süreli; ağ sekmesinden tazele
-$NONCE = "abb8f8810f";
+$API = "https://us-central1-gptfree-2.cloudfunctions.net/agent_stream";
+
+// Bearer token ~1 saat geçerli; 401'de gptfree.com'dan yenile
+$TOKEN = "eyJhbGciOiJSUzI1NiIsImtpZCI6IjgxODA1ZTc2ZmQ1ZmEyZmQ5MWMyYmIzOWU0YjdlZjA1NDY5YmRkY2UiLCJ0eXAiOiJKV1QifQ.eyJwcm92aWRlcl9pZCI6ImFub255bW91cyIsImlzcyI6Imh0dHBzOi8vc2VjdXJldG9rZW4uZ29vZ2xlLmNvbS9ncHRmcmVlLTIiLCJhdWQiOiJncHRmcmVlLTIiLCJhdXRoX3RpbWUiOjE3OTU1ODk0MjksInVzZXJfaWQiOiJKbXY4U0p6ZjlWWklUUGpVMzJyY3Q1a2hhV28yIiwic3ViIjoiSm12OFNKemY5VlpJVFBqVTMycmN0NWtoYVdvMiIsImlhdCI6MTc5NTU4OTQyOSwiZXhwIjoxNzk1NTkzMDI5LCJmaXJlYmFzZSI6eyJpZGVudGl0aWVzIjp7fSwic2lnbl9pbl9wcm92aWRlciI6ImFub255bW91cyJ9fQ.0Bc29MeHS-cm8LGi0YZhquFisO1635yEllD2bhJ8i5P9lf0XWMxrviyHQL8Uga9CRWqUwJ09hrx9iBgzn1n2PD1pqqBMwlq16irNkCx3lGbqGrMP65I2NlLmBcmSEBaX31r3wBnQIrS41ENZOHvYL7zajMsxIABtj7EoGQndVbxJrfBCUmROOVngJe7JYCKkkgTsV3X6r8PwracHeFZHZvn_Qqtk8RRrucD5Rwokl5t1djKedRYYcvUleP97y5-HyTge7KfoWi40ShyQ2XqdYglMCxqEZTN5dVKIHlcsKuxl1JN26swWkHnP_tQfoK5Vqgl--mQ6Jh4WfJVmAxzkjA";
 
 $HEADERS = [
     "User-Agent: Mozilla/5.0 (Android 15; Mobile; rv:159.0) Gecko/159.0 Firefox/159.0",
-    "Accept: text/event-stream",
+    "Accept: */*",
     "Accept-Language: tr-TR",
     "Content-Type: application/json",
-    "X-WP-Nonce: $NONCE",
-    "Origin: https://chatgpt4online.org",
-    "Referer: https://chatgpt4online.org/",
+    "Authorization: Bearer $TOKEN",
+    "Origin: https://gptfree.com",
+    "Referer: https://gptfree.com/",
+    "Sec-Fetch-Dest: empty",
+    "Sec-Fetch-Mode: cors",
+    "Sec-Fetch-Site: cross-site",
 ];
-
-// chat_id yoksa üret (altsayı+harf karışık kısa ID)
-if (!$chat_id) {
-    $chat_id = substr(str_shuffle("abcdefghijklmnopqrstuvwxyz0123456789"), 0, 11);
-}
 
 $payload = [
-    "botId"      => "chatbot-on9iow",
-    "customId"   => null,
-    "session"    => $session,
-    "chatId"     => $chat_id,
-    "contextId"  => (int)$context_id,
-    "messages"   => [
-        [
-            "id"        => "start-" . (int)(microtime(true) * 1000),
-            "role"      => "assistant",
-            "content"   => "Hi! How can I help you?",
-            "who"       => "AI: ",
-            "timestamp" => (int)(microtime(true) * 1000),
-            "key"       => "start-" . (int)(microtime(true) * 1000),
-        ],
-    ],
-    "newMessage" => $mesaj,
-    "newFileId"  => null,
-    "newFileIds" => [],
-    "stream"     => true, // sunucuya hep stream=true
+    "message" => $mesaj,
+    "images"  => [],
+    "history" => $historyArr,
 ];
 
-// --- İstek fonksiyonu (429/5xx için 3 kez yeniden dener) ---
+// ---- İstek fonksiyonu (429/5xx için 3 kez yeniden dener) ----
 function istek($API, $HEADERS, $payload) {
     $ch = curl_init($API);
     curl_setopt_array($ch, [
@@ -91,38 +80,50 @@ function istek($API, $HEADERS, $payload) {
     return [$body, $code, $err];
 }
 
-// --- SSE parse: {"type":"live","data":"..."}, {"type":"end","data":"{json}"} ---
+// ---- SSE parse ----
+// Cloud Function yanıtı: data: {"text":"..."}, data: "[DONE]" veya
+// {"token":"..."} / {"chunk":"..."} tarzı olabilir. Hepsi denenir.
 function sse_parcala($body) {
-    $parcalar = [];
     $cevap = "";
+    $parcalar = [];
     $son = null;
-    $yeniChatId = null;
 
     foreach (explode("\n", $body) as $line) {
         $line = rtrim($line, "\r");
-        if (strpos($line, "data: ") !== 0) continue;
-        $json = substr($line, 6);
-        $d = json_decode($json, true);
-        if (!is_array($d)) continue;
+        if ($line === '') continue;
 
-        $tip = $d['type'] ?? '';
-        if ($tip === 'live') {
-            $parca = $d['data'] ?? '';
-            if ($parca !== '') $parcalar[] = $parca;
-        } elseif ($tip === 'end') {
-            $ic = json_decode($d['data'] ?? '{}', true);
-            if (is_array($ic)) {
-                $son = $ic;
-                $cevap = $ic['reply'] ?? '';
-                $yeniChatId = $ic['chatId'] ?? ($ic['chat_id'] ?? null);
+        if (strpos($line, "data: ") === 0) {
+            $gövde = trim(substr($line, 6));
+            if ($gövde === '' || $gövde === '[DONE]') continue;
+            $j = json_decode($gövde, true);
+            if (is_array($j)) {
+                foreach (["text", "token", "chunk", "delta", "content", "response", "message"] as $k) {
+                    if (isset($j[$k]) && is_string($j[$k]) && $j[$k] !== '') {
+                        $parcalar[] = $j[$k]; break;
+                    }
+                }
+                if (isset($j['done']) && $j['done']) $son = $j;
+                if (isset($j['finish_reason'])) $son = $j;
+            } else {
+                $parcalar[] = $gövde;
             }
-        } elseif ($tip === 'error') {
-            $son = $d;
+        } else if (strpos($line, "event:") === 0) {
+            continue;
+        } else {
+            // JSON olmayan düz metin
+            $j = json_decode($line, true);
+            if (is_array($j)) {
+                foreach (["text", "token", "chunk", "delta", "content"] as $k) {
+                    if (isset($j[$k]) && is_string($j[$k])) { $parcalar[] = $j[$k]; break; }
+                }
+            } else {
+                $parcalar[] = $line;
+            }
         }
     }
 
-    if ($cevap === '') $cevap = implode("", $parcalar);
-    return [$cevap, $son, $yeniChatId, $parcalar];
+    $cevap = implode("", $parcalar);
+    return [$cevap, $son, $parcalar];
 }
 
 // ---- STREAM ----
@@ -139,7 +140,7 @@ if ($stream) {
         echo "event: error\n";
         echo "data: " . json_encode([
             "success"     => false,
-            "message"     => "chatgpt4online yanıt vermedi",
+            "message"     => "gptfree yanıt vermedi",
             "http"        => $code,
             "error"       => $err,
             "gelistirici" => "@ittizar",
@@ -147,34 +148,32 @@ if ($stream) {
         exit;
     }
 
-    // Gelen SSE'yi satır satır aktar
-    $yeniChatId = $chat_id;
     foreach (explode("\n", $body) as $line) {
         $line = rtrim($line, "\r");
         if (strpos($line, "data: ") !== 0) continue;
-        $d = json_decode(substr($line, 6), true);
-        if (!is_array($d)) continue;
-
-        $tip = $d['type'] ?? '';
-        if ($tip === 'live') {
-            echo "event: message\n";
-            echo "data: " . json_encode(["content" => $d['data'] ?? ''], JSON_UNESCAPED_UNICODE) . "\n\n";
-            @flush();
-        } elseif ($tip === 'end') {
-            $ic = json_decode($d['data'] ?? '{}', true);
-            if (is_array($ic)) {
-                $yeniChatId = $ic['chatId'] ?? $yeniChatId;
-                echo "event: end\n";
-                echo "data: " . json_encode([
-                    "reply"   => $ic['reply'] ?? '',
-                    "chat_id" => $yeniChatId,
-                    "usage"   => $ic['usage'] ?? null,
-                ], JSON_UNESCAPED_UNICODE) . "\n\n";
+        $gövde = trim(substr($line, 6));
+        if ($gövde === '' || $gövde === '[DONE]') {
+            if ($gövde === '[DONE]') {
+                echo "event: done\n";
+                echo "data: " . json_encode(["success" => true, "gelistirici" => "@ittizar"], JSON_UNESCAPED_UNICODE) . "\n\n";
                 @flush();
             }
-        } elseif ($tip === 'error') {
-            echo "event: error\n";
-            echo "data: " . json_encode($d, JSON_UNESCAPED_UNICODE) . "\n\n";
+            continue;
+        }
+        $j = json_decode($gövde, true);
+        if (is_array($j)) {
+            $parca = '';
+            foreach (["text", "token", "chunk", "delta", "content", "response", "message"] as $k) {
+                if (isset($j[$k]) && is_string($j[$k]) && $j[$k] !== '') { $parca = $j[$k]; break; }
+            }
+            if ($parca !== '') {
+                echo "event: message\n";
+                echo "data: " . json_encode(["content" => $parca], JSON_UNESCAPED_UNICODE) . "\n\n";
+                @flush();
+            }
+        } else {
+            echo "event: message\n";
+            echo "data: " . json_encode(["content" => $gövde], JSON_UNESCAPED_UNICODE) . "\n\n";
             @flush();
         }
     }
@@ -182,8 +181,6 @@ if ($stream) {
     echo "event: done\n";
     echo "data: " . json_encode([
         "success"     => true,
-        "chat_id"     => $yeniChatId,
-        "session"     => $session,
         "gelistirici" => "@ittizar",
     ], JSON_UNESCAPED_UNICODE) . "\n\n";
     exit;
@@ -200,31 +197,38 @@ for ($i = 0; $i < 3; $i++) {
         sleep(5 * ($i + 1));
         continue;
     }
+    if ($code === 401) {
+        echo json_encode([
+            "success"     => false,
+            "message"     => "Bearer token süresi dolmuş. gptfree.com'dan tazele.",
+            "http"        => 401,
+            "gelistirici" => "@ittizar",
+        ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        exit;
+    }
     break;
 }
 
 if ($body === false || $code !== 200) {
     echo json_encode([
         "success"     => false,
-        "message"     => "chatgpt4online yanıt vermedi",
+        "message"     => "gptfree yanıt vermedi",
         "http"        => $code,
         "error"       => $err,
+        "ham_bas"     => is_string($body) ? substr($body, 0, 300) : null,
         "gelistirici" => "@ittizar",
     ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
     exit;
 }
 
-[$cevap, $son, $yeniChatId, $parcalar] = sse_parcala($body);
+[$cevap, $son, $parcalar] = sse_parcala($body);
 
 $cikti = [
     "success"     => true,
     "gelistirici" => "@ittizar",
-    "chat_id"     => $yeniChatId ?: $chat_id,
-    "session"     => $session,
     "cevap"       => trim($cevap),
 ];
-
-if (!empty($son['usage'])) $cikti["usage"] = $son['usage'];
+if ($son) $cikti["son"] = $son;
 if (empty($cikti["cevap"])) {
     $cikti["uyari"] = "cevap boş, ham_yanit içine bak";
     $cikti["ham_yanit"] = substr($body, 0, 2000);
