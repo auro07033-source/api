@@ -66,6 +66,37 @@ $POST = http_build_query([
     "tmp_enabled"   => "0",
 ]);
 
+// --- Herhangi bir JSON'dan metin çıkar (derin tarama) ---
+function json_metin_bul($j) {
+    if (is_string($j)) return $j;
+    if (!is_array($j)) return null;
+
+    // Öncelik sırası: yaygın alanlar
+    $oncelikli = ["response","message","content","text","answer","output","delta","completion","reply","result"];
+    foreach ($oncelikli as $a) {
+        if (isset($j[$a])) {
+            $v = json_metin_bul($j[$a]);
+            if (is_string($v) && trim($v) !== '') return $v;
+        }
+    }
+    // OpenAI tarzı: choices[0].delta.content / choices[0].message.content
+    if (isset($j['choices'][0]) && is_array($j['choices'][0])) {
+        $c = $j['choices'][0];
+        foreach (["delta","message"] as $k) {
+            if (isset($c[$k]['content'])) {
+                $v = $c[$k]['content'];
+                if (is_string($v) && trim($v) !== '') return $v;
+            }
+        }
+    }
+    // Dizinin herhangi bir string elemanı
+    foreach ($j as $v) {
+        $r = json_metin_bul($v);
+        if (is_string($r) && trim($r) !== '') return $r;
+    }
+    return null;
+}
+
 // ---- STREAM ----
 if ($stream) {
     header('Content-Type: text/event-stream; charset=utf-8');
@@ -75,6 +106,7 @@ if ($stream) {
     @ob_implicit_flush(true);
 
     $buffer = "";
+    $yeniSession = $session;
 
     $ch = curl_init($API);
     curl_setopt_array($ch, [
@@ -86,25 +118,23 @@ if ($stream) {
         CURLOPT_SSL_VERIFYHOST => false,
         CURLOPT_ENCODING       => "",
     ]);
-    curl_setopt($ch, CURLOPT_WRITEFUNCTION, function($ch, $chunk) use (&$buffer) {
+    curl_setopt($ch, CURLOPT_WRITEFUNCTION, function($ch, $chunk) use (&$buffer, &$yeniSession) {
         $buffer .= $chunk;
         while (($pos = strpos($buffer, "\n")) !== false) {
             $line = substr($buffer, 0, $pos);
             $buffer = substr($buffer, $pos + 1);
             $line = rtrim($line, "\r");
 
-            if (strpos($line, "data: ") === 0) {
-                $gövde = trim(substr($line, 6));
+            if (strpos($line, "data:") === 0) {
+                $gövde = ltrim(substr($line, 5));
                 if ($gövde === '' || $gövde === '[DONE]') continue;
                 $j = json_decode($gövde, true);
                 if (is_array($j)) {
-                    $parca = '';
-                    foreach (["response", "message", "content", "text", "delta"] as $a) {
-                        if (isset($j[$a]) && is_string($j[$a]) && $j[$a] !== '') { $parca = $j[$a]; break; }
-                    }
-                    if ($parca !== '') {
+                    $yeniSession = (string)($j['sessionId'] ?? $j['session_id'] ?? $yeniSession);
+                    $m = json_metin_bul($j);
+                    if ($m !== null) {
                         echo "event: message\n";
-                        echo "data: " . json_encode(["content" => $parca], JSON_UNESCAPED_UNICODE) . "\n\n";
+                        echo "data: " . json_encode(["content" => $m], JSON_UNESCAPED_UNICODE) . "\n\n";
                         @flush();
                     }
                 } else {
@@ -112,7 +142,7 @@ if ($stream) {
                     echo "data: " . json_encode(["content" => $gövde], JSON_UNESCAPED_UNICODE) . "\n\n";
                     @flush();
                 }
-            } else if ($line !== '') {
+            } else if ($line !== '' && strpos($line, "event:") !== 0) {
                 echo "event: message\n";
                 echo "data: " . json_encode(["content" => $line], JSON_UNESCAPED_UNICODE) . "\n\n";
                 @flush();
@@ -129,7 +159,7 @@ if ($stream) {
     echo "data: " . json_encode([
         "success"     => ($code === 200 && $err === ""),
         "http"        => $code,
-        "session"     => $session,
+        "session"     => $yeniSession,
         "error"       => $err ?: null,
         "gelistirici" => "@ittizar",
     ], JSON_UNESCAPED_UNICODE) . "\n\n";
@@ -167,64 +197,87 @@ if ($body === false || $code !== 200) {
     exit;
 }
 
-// JSON mu düz metin/SSE mi?
-$j = json_decode($body, true);
+$hamYanit = $body;
 
+// 1) Tümü JSON ise derin tarama
+$j = json_decode($body, true);
 if (is_array($j)) {
-    // JSON yanıt
-    $cevap = "";
-    foreach (["response", "message", "content", "text", "answer", "output"] as $a) {
-        if (isset($j[$a]) && is_string($j[$a]) && $j[$a] !== '') { $cevap = $j[$a]; break; }
-        if (isset($j[$a]) && is_array($j[$a])) {
-            $iç = $j[$a]['content'] ?? $j[$a]['text'] ?? null;
-            if (is_string($iç) && $iç !== '') { $cevap = $iç; break; }
-        }
-    }
-    if ($cevap === "" && isset($j['data']) && is_array($j['data'])) {
-        foreach (["response", "message", "content", "text"] as $a) {
-            if (isset($j['data'][$a]) && is_string($j['data'][$a])) { $cevap = $j['data'][$a]; break; }
-        }
-    }
+    $cevap = json_metin_bul($j) ?? "";
     $yeniSession = (string)($j['sessionId'] ?? $j['session_id'] ?? $session);
 
-    echo json_encode([
+    $cikti = [
         "success"     => true,
         "gelistirici" => "@ittizar",
         "session"     => $yeniSession,
         "cevap"       => trim($cevap),
-    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    ];
+    if (trim($cevap) === '') {
+        $cikti["uyari"] = "cevap boş, JSON yapısı tanınmadı";
+        $cikti["ham_yanit"] = substr($hamYanit, 0, 2000);
+    }
+    echo json_encode($cikti, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
     exit;
 }
 
-// JSON değil: SSE veya düz metin olarak parse
+// 2) SSE / düz metin parse (buffer'lı)
 $parcalar = [];
 $yeniSession = $session;
+$sseBuffer = "";
+
 foreach (preg_split('/\r\n|\r|\n/', $body) as $line) {
-    $line = trim($line);
+    $line = rtrim($line, "\r");
     if ($line === '') continue;
 
-    if (strpos($line, "data: ") === 0) {
-        $gövde = trim(substr($line, 6));
+    if (strpos($line, "event:") === 0) continue;
+
+    if (strpos($line, "data:") === 0) {
+        $gövde = ltrim(substr($line, 5));
         if ($gövde === '' || $gövde === '[DONE]') continue;
-        $jj = json_decode($gövde, true);
+
+        // Bölünmüş JSON desteği
+        $sseBuffer .= $gövde;
+        $jj = json_decode($sseBuffer, true);
         if (is_array($jj)) {
             $yeniSession = (string)($jj['sessionId'] ?? $jj['session_id'] ?? $yeniSession);
-            foreach (["response", "message", "content", "text", "delta"] as $a) {
-                if (isset($jj[$a]) && is_string($jj[$a]) && $jj[$a] !== '') {
-                    $parcalar[] = $jj[$a]; break;
-                }
-            }
-        } else {
-            $parcalar[] = $gövde;
+            $m = json_metin_bul($jj);
+            if ($m !== null) $parcalar[] = $m;
+            $sseBuffer = "";
         }
+        continue;
+    }
+
+    // Düz metin satırı (JSON olabilir)
+    $jj = json_decode($line, true);
+    if (is_array($jj)) {
+        $yeniSession = (string)($jj['sessionId'] ?? $jj['session_id'] ?? $yeniSession);
+        $m = json_metin_bul($jj);
+        if ($m !== null) $parcalar[] = $m;
     } else {
         $parcalar[] = $line;
     }
 }
 
-echo json_encode([
+// Buffer'da kalan
+if ($sseBuffer !== "") {
+    $jj = json_decode($sseBuffer, true);
+    if (is_array($jj)) {
+        $m = json_metin_bul($jj);
+        if ($m !== null) $parcalar[] = $m;
+    }
+}
+
+$cevap = trim(implode("", $parcalar));
+
+$cikti = [
     "success"     => true,
     "gelistirici" => "@ittizar",
     "session"     => $yeniSession,
-    "cevap"       => trim(implode("", $parcalar)),
-], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    "cevap"       => $cevap,
+];
+
+if ($cevap === '') {
+    $cikti["uyari"] = "cevap boş, ham_yanit içine bak";
+    $cikti["ham_yanit"] = substr($hamYanit, 0, 2000);
+}
+
+echo json_encode($cikti, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
