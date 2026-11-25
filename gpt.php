@@ -1,9 +1,9 @@
 <?php
-// gpt.php - notrack.ai sohbet proxy (PHP, chat_id + gecikme + 429 retry)
+// claila.php - Claila AI sohbet proxy (PHP)
 // Kullanım:
-//   /gpt.php?mesaj=Merhaba
-//   /gpt.php?mesaj=Devam&chat_id=abc123
-//   /gpt.php?mesaj=Merhaba&stream=1  (SSE canlı akış)
+//   /claila.php?mesaj=Merhaba
+//   /claila.php?mesaj=Devam&session=1795587006
+//   /claila.php?mesaj=Merhaba&stream=1   (SSE canlı akış)
 // Gereksinim: PHP 7.4+, curl
 
 header('Access-Control-Allow-Origin: *');
@@ -12,13 +12,8 @@ header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') { http_response_code(204); exit; }
 
 $mesaj   = $_POST['mesaj']   ?? $_GET['mesaj']   ?? null;
-$chat_id = $_POST['chat_id'] ?? $_GET['chat_id'] ?? null;
+$session = $_POST['session'] ?? $_GET['session'] ?? null;
 $stream  = isset($_GET['stream']) && $_GET['stream'] === '1';
-
-// Aynı IP'den hızlı istekleri yumuşat (dosya tabanlı, 3 sn minimum)
-$ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
-$ip = trim(explode(',', $ip)[0]);
-$lockFile = sys_get_temp_dir() . "/notrack_" . md5($ip) . ".lock";
 
 if ($mesaj === null || trim($mesaj) === '') {
     header('Content-Type: application/json; charset=utf-8');
@@ -31,71 +26,45 @@ if ($mesaj === null || trim($mesaj) === '') {
     exit;
 }
 
-$MIN_INTERVAL = 3;
-if (file_exists($lockFile)) {
-    $son = (int)@file_get_contents($lockFile);
-    $fark = time() - $son;
-    if ($fark < $MIN_INTERVAL) sleep($MIN_INTERVAL - $fark);
-}
-@file_put_contents($lockFile, time());
+$session = $session ?: (string)time();
 
-$URL = "https://notrack.ai/api/dispatch";
+$API = "https://app.claila.com/api/v2/aichat31";
 
 $HEADERS = [
     "User-Agent: Mozilla/5.0 (Android 15; Mobile; rv:159.0) Gecko/159.0 Firefox/159.0",
     "Accept: */*",
     "Accept-Language: tr-TR",
-    "Content-Type: application/json",
-    "Referer: https://notrack.ai/tr/chat",
-    "Origin: https://notrack.ai",
-    "Sec-Fetch-Dest: empty",
-    "Sec-Fetch-Mode: cors",
-    "Sec-Fetch-Site: same-origin",
+    "Content-Type: application/x-www-form-urlencoded; charset=UTF-8",
+    "X-CSRF-Token: 055b231c06218424884b26fde740d9335fa42adcaeed753174c7e1b36b59abe8",
+    "X-Requested-With: XMLHttpRequest",
+    "Origin: https://app.claila.com",
+    "Referer: https://app.claila.com/chat?lang=tr&autostart=1&prompt=" . urlencode(mb_substr($mesaj, 0, 30)),
 ];
 
 $COOKIES = [
-    "si_usr_id" => "1795395693-v-j4QULqTYbSSCcRQR1dg7",
-    "si_ses_id" => "1795395693-v-j4QULqTYbSSCcRQR1dg7",
-    "uid"       => "10133feb-1a97-4359-b418-b25e25a1f30d",
+    "dmcfkjn3cdc"       => "e106p3a7ol7ebmboosmjm8pq57",
+    "claila_fcm_first"  => "1795586962",
+    "_ct_uid"           => "cd4d18846e76cac2c4d3bb51e559428e",
+    "_fl_sid"           => "6677e0c654a297f026c31613dbe8a6d5",
+    "fs_ux"             => "edd78d80-2d1b-454f-9cad-b28d2be07ff0",
+    "lang"              => "tr",
+    "claila_lens_ok"    => "0",
+    "claila_anon"       => "ff40a39c8dc83486b71e5446fd65e5bf8558002f37234d2c2e9bfedc003f0b23",
+    "theme"             => "dark",
 ];
-
 $cookieStr = [];
 foreach ($COOKIES as $k => $v) $cookieStr[] = "$k=$v";
 $cookieStr = implode("; ", $cookieStr);
 
-$payload = [
-    "user_input"  => $mesaj,
-    "mode"        => "usual",
-    "model"       => "C",
-    "persona"     => "normal",
-    "max_turns"   => 6,
-    "chat_id"     => $chat_id,
-    "attachments" => [],
-    "regenerate"  => false,
-    "edit"        => false,
-    "edit_mid"    => null,
-    "via"         => "typed",
-];
-
-function notrack_post($URL, $HEADERS, $cookieStr, $payload) {
-    $ch = curl_init($URL);
-    curl_setopt_array($ch, [
-        CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => json_encode($payload),
-        CURLOPT_HTTPHEADER     => array_merge($HEADERS, ["Cookie: $cookieStr"]),
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 60,
-        CURLOPT_CONNECTTIMEOUT => 15,
-        CURLOPT_SSL_VERIFYPEER => false,
-        CURLOPT_SSL_VERIFYHOST => false,
-        CURLOPT_ENCODING       => "",
-    ]);
-    $body = curl_exec($ch);
-    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $err  = curl_error($ch);
-    curl_close($ch);
-    return [$body, $code, $err];
-}
+$POST = http_build_query([
+    "model"         => "claila",
+    "response_mode" => "auto",
+    "message"       => $mesaj,
+    "sessionId"     => $session,
+    "chat_mode"     => "chat",
+    "websearch"     => "false",
+    "tmp_enabled"   => "0",
+]);
 
 // ---- STREAM ----
 if ($stream) {
@@ -105,38 +74,47 @@ if ($stream) {
     @ob_end_flush();
     @ob_implicit_flush(true);
 
-    $yeni_chat_id = null;
     $buffer = "";
 
-    $ch = curl_init($URL);
+    $ch = curl_init($API);
     curl_setopt_array($ch, [
         CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => json_encode($payload),
+        CURLOPT_POSTFIELDS     => $POST,
         CURLOPT_HTTPHEADER     => array_merge($HEADERS, ["Cookie: $cookieStr"]),
         CURLOPT_TIMEOUT        => 60,
         CURLOPT_SSL_VERIFYPEER => false,
         CURLOPT_SSL_VERIFYHOST => false,
         CURLOPT_ENCODING       => "",
     ]);
-    curl_setopt($ch, CURLOPT_WRITEFUNCTION, function($ch, $chunk) use (&$buffer, &$yeni_chat_id) {
+    curl_setopt($ch, CURLOPT_WRITEFUNCTION, function($ch, $chunk) use (&$buffer) {
         $buffer .= $chunk;
         while (($pos = strpos($buffer, "\n")) !== false) {
             $line = substr($buffer, 0, $pos);
             $buffer = substr($buffer, $pos + 1);
             $line = rtrim($line, "\r");
-            if (strpos($line, "data: ") !== 0) continue;
-            $data = json_decode(substr($line, 6), true);
-            if (!is_array($data)) continue;
 
-            if (($data['type'] ?? '') === 'chat_meta' && !$yeni_chat_id) {
-                $yeni_chat_id = $data['chat_id'] ?? null;
-                echo "event: chat_id\n";
-                echo "data: " . json_encode(["chat_id" => $yeni_chat_id], JSON_UNESCAPED_UNICODE) . "\n\n";
-                @flush();
-            }
-            if (($data['type'] ?? '') === 'message' && ($data['speaker'] ?? '') === 'C') {
+            if (strpos($line, "data: ") === 0) {
+                $gövde = trim(substr($line, 6));
+                if ($gövde === '' || $gövde === '[DONE]') continue;
+                $j = json_decode($gövde, true);
+                if (is_array($j)) {
+                    $parca = '';
+                    foreach (["response", "message", "content", "text", "delta"] as $a) {
+                        if (isset($j[$a]) && is_string($j[$a]) && $j[$a] !== '') { $parca = $j[$a]; break; }
+                    }
+                    if ($parca !== '') {
+                        echo "event: message\n";
+                        echo "data: " . json_encode(["content" => $parca], JSON_UNESCAPED_UNICODE) . "\n\n";
+                        @flush();
+                    }
+                } else {
+                    echo "event: message\n";
+                    echo "data: " . json_encode(["content" => $gövde], JSON_UNESCAPED_UNICODE) . "\n\n";
+                    @flush();
+                }
+            } else if ($line !== '') {
                 echo "event: message\n";
-                echo "data: " . json_encode(["content" => $data['content'] ?? ''], JSON_UNESCAPED_UNICODE) . "\n\n";
+                echo "data: " . json_encode(["content" => $line], JSON_UNESCAPED_UNICODE) . "\n\n";
                 @flush();
             }
         }
@@ -151,7 +129,7 @@ if ($stream) {
     echo "data: " . json_encode([
         "success"     => ($code === 200 && $err === ""),
         "http"        => $code,
-        "chat_id"     => $yeni_chat_id,
+        "session"     => $session,
         "error"       => $err ?: null,
         "gelistirici" => "@ittizar",
     ], JSON_UNESCAPED_UNICODE) . "\n\n";
@@ -161,21 +139,27 @@ if ($stream) {
 // ---- NORMAL ----
 header('Content-Type: application/json; charset=utf-8');
 
-$body = null; $code = 0; $err = "";
-for ($i = 0; $i < 3; $i++) {
-    [$body, $code, $err] = notrack_post($URL, $HEADERS, $cookieStr, $payload);
-    if ($code === 200) break;
-    if (in_array($code, [429, 500, 502, 503, 504], true)) {
-        sleep(5 * ($i + 1));
-        continue;
-    }
-    break;
-}
+$ch = curl_init($API);
+curl_setopt_array($ch, [
+    CURLOPT_POST           => true,
+    CURLOPT_POSTFIELDS     => $POST,
+    CURLOPT_HTTPHEADER     => array_merge($HEADERS, ["Cookie: $cookieStr"]),
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_TIMEOUT        => 60,
+    CURLOPT_CONNECTTIMEOUT => 15,
+    CURLOPT_SSL_VERIFYPEER => false,
+    CURLOPT_SSL_VERIFYHOST => false,
+    CURLOPT_ENCODING       => "",
+]);
+$body = curl_exec($ch);
+$code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+$err  = curl_error($ch);
+curl_close($ch);
 
 if ($body === false || $code !== 200) {
     echo json_encode([
         "success"     => false,
-        "message"     => $code === 429 ? "notrack.ai rate limit (429). Daha sonra dene." : "notrack.ai yanıt vermedi",
+        "message"     => "claila yanıt vermedi",
         "http"        => $code,
         "error"       => $err,
         "gelistirici" => "@ittizar",
@@ -183,25 +167,64 @@ if ($body === false || $code !== 200) {
     exit;
 }
 
-$yeni_chat_id = null;
-$icerik = "";
-foreach (explode("\n", $body) as $line) {
-    $line = rtrim($line, "\r");
-    if (strpos($line, "data: ") !== 0) continue;
-    $data = json_decode(substr($line, 6), true);
-    if (!is_array($data)) continue;
+// JSON mu düz metin/SSE mi?
+$j = json_decode($body, true);
 
-    if (($data['type'] ?? '') === 'chat_meta' && !$yeni_chat_id) {
-        $yeni_chat_id = $data['chat_id'] ?? null;
+if (is_array($j)) {
+    // JSON yanıt
+    $cevap = "";
+    foreach (["response", "message", "content", "text", "answer", "output"] as $a) {
+        if (isset($j[$a]) && is_string($j[$a]) && $j[$a] !== '') { $cevap = $j[$a]; break; }
+        if (isset($j[$a]) && is_array($j[$a])) {
+            $iç = $j[$a]['content'] ?? $j[$a]['text'] ?? null;
+            if (is_string($iç) && $iç !== '') { $cevap = $iç; break; }
+        }
     }
-    if (($data['type'] ?? '') === 'message' && ($data['speaker'] ?? '') === 'C') {
-        $icerik .= ($data['content'] ?? '');
+    if ($cevap === "" && isset($j['data']) && is_array($j['data'])) {
+        foreach (["response", "message", "content", "text"] as $a) {
+            if (isset($j['data'][$a]) && is_string($j['data'][$a])) { $cevap = $j['data'][$a]; break; }
+        }
+    }
+    $yeniSession = (string)($j['sessionId'] ?? $j['session_id'] ?? $session);
+
+    echo json_encode([
+        "success"     => true,
+        "gelistirici" => "@ittizar",
+        "session"     => $yeniSession,
+        "cevap"       => trim($cevap),
+    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    exit;
+}
+
+// JSON değil: SSE veya düz metin olarak parse
+$parcalar = [];
+$yeniSession = $session;
+foreach (preg_split('/\r\n|\r|\n/', $body) as $line) {
+    $line = trim($line);
+    if ($line === '') continue;
+
+    if (strpos($line, "data: ") === 0) {
+        $gövde = trim(substr($line, 6));
+        if ($gövde === '' || $gövde === '[DONE]') continue;
+        $jj = json_decode($gövde, true);
+        if (is_array($jj)) {
+            $yeniSession = (string)($jj['sessionId'] ?? $jj['session_id'] ?? $yeniSession);
+            foreach (["response", "message", "content", "text", "delta"] as $a) {
+                if (isset($jj[$a]) && is_string($jj[$a]) && $jj[$a] !== '') {
+                    $parcalar[] = $jj[$a]; break;
+                }
+            }
+        } else {
+            $parcalar[] = $gövde;
+        }
+    } else {
+        $parcalar[] = $line;
     }
 }
 
 echo json_encode([
     "success"     => true,
     "gelistirici" => "@ittizar",
-    "chat_id"     => $yeni_chat_id,
-    "cevap"       => trim($icerik),
+    "session"     => $yeniSession,
+    "cevap"       => trim(implode("", $parcalar)),
 ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
